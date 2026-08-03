@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { SearchBar } from "./components/SearchBar";
 import { VideoCard, Video } from "./components/VideoCard";
 import { VideoPlayerModal } from "./components/VideoPlayerModal";
-import mockVideos from "./data/mockVideos.json";
 import { Film, Sun, Moon } from "lucide-react";
 
 export default function App() {
@@ -12,6 +11,10 @@ export default function App() {
     const saved = localStorage.getItem("theme");
     return (saved as "dark" | "light") || "dark";
   });
+  
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Sync theme changes with the DOM element class list
   useEffect(() => {
@@ -22,6 +25,25 @@ export default function App() {
     }
   }, [theme]);
 
+  // Fetch videos from backend server on mount
+  useEffect(() => {
+    fetch("/api/videos")
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Failed to load videos from server");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setVideos(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
@@ -29,7 +51,7 @@ export default function App() {
   };
 
   // Filter videos based on title, description, or channel name
-  const filteredVideos = (mockVideos as Video[]).filter((video) => {
+  const filteredVideos = videos.filter((video) => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
     return (
@@ -80,9 +102,22 @@ export default function App() {
           />
         </header>
 
-        {/* Main Content (Videos Grid) */}
+        {/* Main Content (Videos Grid or Loader/Error status) */}
         <main className="flex-1">
-          {filteredVideos.length > 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center animate-pulse">
+              <Film className="w-12 h-12 text-vibe-red mb-4" />
+              <p className="text-sm text-fg-muted font-medium">Tuning into the vibe frequency...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-4">
+                <Film className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-fg mb-1">Failed to connect to Vibeflix</h3>
+              <p className="text-sm text-red-400 max-w-xs">{error}</p>
+            </div>
+          ) : filteredVideos.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredVideos.map((video) => (
                 <VideoCard

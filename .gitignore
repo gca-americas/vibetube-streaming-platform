@@ -1,5 +1,15 @@
 # Dependencies
 node_modules/
+**/node_modules/
+
+# Python Virtual Environments & Cache
+venv/
+.venv/
+__pycache__/
+.pyc
+
+# Local cache directories
+.vite/
 
 # Production build output
 dist/
