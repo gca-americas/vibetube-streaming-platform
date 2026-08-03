@@ -24,3 +24,10 @@
 - **Configured Vite Dev Proxy**: Set up Vite proxy rules in `frontend/vite.config.ts` to redirect client-side API requests to port `8000`.
 - **Integrated React Fetch Requests**: Configured `App.tsx` state models (`videos`, `loading`, `error`) to load data dynamically on mount using browser `fetch`.
 - **Verification**: Verified endpoint responses via cURL and compiled the frontend production build without errors.
+
+## Phase 4: SQLite Database Integration (2026-08-03)
+- **Database Layer Transition**: Migrated backend data storage from direct file reads of `mockVideos.json` to a local SQLite database (`vibeflix.db`).
+- **Automated Seeding on Startup**: Implemented `init_db()` in `backend/main.py` to create the schema and seed the initial dataset on first boot.
+- **Dynamic SQL Querying**: Updated the `GET /api/videos` endpoint to query the SQLite table directly.
+- **Excluded Binary DBs from Git**: Appended `*.db` to `.gitignore`.
+- **Verification**: Successfully fetched seeded video records from the SQLite database.
