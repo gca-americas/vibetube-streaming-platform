@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-sans: "Montserrat", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-vibe-red: #e50914;
+  --color-vibe-red-glow: rgba(229, 9, 20, 0.3);
+  --color-vibe-purple: #8b5cf6;
+  --color-vibe-purple-glow: rgba(139, 92, 246, 0.3);
+  
+  --color-stage: #08080b;
+  --color-card: #121217;
+  --color-card-hover: #1b1b22;
+  --color-input: #17171f;
+  
+  --color-spotlight: rgba(229, 9, 20, 0.12);
+}
+
+:root {
+  --bg: var(--color-stage);
+  --fg: #f5f3f0;
+  --fg-muted: #9ca3af;
+  --hairline: rgba(255, 255, 255, 0.08);
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Custom spotlight background gradient to match Vibeflix signature aesthetic */
+.stage-vignette {
+  position: relative;
+}
+
+.stage-vignette::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    110% 70% at 50% 0%,
+    var(--color-spotlight) 0%,
+    transparent 60%
+  );
+  z-index: 0;
+}
+
+/* Scrollbar customizations */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-stage);
+}
+::-webkit-scrollbar-thumb {
+  background: #272730;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f4e;
+}
