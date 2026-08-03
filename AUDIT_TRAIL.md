@@ -17,3 +17,10 @@
 - **Updated Video URLs**: Configured valid, high-availability public domain video streams from `w3schools.com` and `w3.org` in `mockVideos.json` to resolve the 403 Forbidden issues.
 - **Created Setup Documentation**: Added `README.md` with instructions on installing dependencies and running the local development and production environments.
 - **Verification**: Built production assets successfully.
+
+## Phase 3: Stand up the backend (2026-08-03)
+- **Decoupled Application Structure**: Restructured workspace directories into discrete `/frontend` and `/backend` packages.
+- **Implemented Python FastAPI Backend**: Coded a new backend application in `backend/main.py` using `fastapi` and `uvicorn`, loading `mockVideos.json` locally and exposing the `GET /api/videos` query endpoint.
+- **Configured Vite Dev Proxy**: Set up Vite proxy rules in `frontend/vite.config.ts` to redirect client-side API requests to port `8000`.
+- **Integrated React Fetch Requests**: Configured `App.tsx` state models (`videos`, `loading`, `error`) to load data dynamically on mount using browser `fetch`.
+- **Verification**: Verified endpoint responses via cURL and compiled the frontend production build without errors.
