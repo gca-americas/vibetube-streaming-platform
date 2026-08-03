@@ -114,12 +114,6 @@ export default function App() {
           </p>
           <div className="flex gap-4">
             <span className="hover:text-fg cursor-pointer transition-colors duration-150">
-              Terms
-            </span>
-            <span className="hover:text-fg cursor-pointer transition-colors duration-150">
-              Privacy
-            </span>
-            <span className="hover:text-fg cursor-pointer transition-colors duration-150">
               Support
             </span>
           </div>
