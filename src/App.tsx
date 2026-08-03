@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { SearchBar } from "./components/SearchBar";
 import { VideoCard, Video } from "./components/VideoCard";
+import { VideoPlayerModal } from "./components/VideoPlayerModal";
 import mockVideos from "./data/mockVideos.json";
 import { Film } from "lucide-react";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
 
   // Filter videos based on title, description, or channel name
   const filteredVideos = (mockVideos as Video[]).filter((video) => {
@@ -33,11 +35,13 @@ export default function App() {
           <p className="text-sm md:text-base text-gray-400 font-medium max-w-md mb-8">
             Curated channels and cinematic feeds to match your daily frequency.
           </p>
-          
+
           {/* Centered Search Bar */}
           <SearchBar
             value={searchQuery}
-            onChange={setSearchQuery}
+            onChange={(val) => {
+              setSearchQuery(val);
+            }}
             onClear={() => setSearchQuery("")}
           />
         </header>
@@ -47,7 +51,11 @@ export default function App() {
           {filteredVideos.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredVideos.map((video) => (
-                <VideoCard key={video.id} video={video} />
+                <VideoCard
+                  key={video.id}
+                  video={video}
+                  onClick={setSelectedVideo}
+                />
               ))}
             </div>
           ) : (
@@ -55,7 +63,9 @@ export default function App() {
               <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-500 mb-4">
                 <Film className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">No streams matching that vibe</h3>
+              <h3 className="text-lg font-bold text-white mb-1">
+                No streams matching that vibe
+              </h3>
               <p className="text-sm text-gray-400 max-w-xs">
                 Try searching for something else, like "synthwave", "code", or "keyboard".
               </p>
@@ -65,14 +75,30 @@ export default function App() {
 
         {/* Minimal Footer */}
         <footer className="mt-20 py-6 border-t border-white/5 flex flex-col md:flex-row items-center justify-between text-xs text-gray-500 gap-4">
-          <p>© {new Date().getFullYear()} Vibeflix Inc. Handcrafted with vibe-driven design.</p>
+          <p>
+            © {new Date().getFullYear()} Vibeflix Inc. Handcrafted with vibe-driven design.
+          </p>
           <div className="flex gap-4">
-            <span className="hover:text-white cursor-pointer transition-colors duration-150">Terms</span>
-            <span className="hover:text-white cursor-pointer transition-colors duration-150">Privacy</span>
-            <span className="hover:text-white cursor-pointer transition-colors duration-150">Support</span>
+            <span className="hover:text-white cursor-pointer transition-colors duration-150">
+              Terms
+            </span>
+            <span className="hover:text-white cursor-pointer transition-colors duration-150">
+              Privacy
+            </span>
+            <span className="hover:text-white cursor-pointer transition-colors duration-150">
+              Support
+            </span>
           </div>
         </footer>
       </div>
+
+      {/* Video Player Modal */}
+      {selectedVideo && (
+        <VideoPlayerModal
+          video={selectedVideo}
+          onClose={() => setSelectedVideo(null)}
+        />
+      )}
     </div>
   );
 }

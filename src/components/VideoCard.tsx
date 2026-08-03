@@ -15,6 +15,7 @@ export interface Video {
 
 interface VideoCardProps {
   video: Video;
+  onClick?: (video: Video) => void;
 }
 
 const formatViews = (views: number): string => {
@@ -27,9 +28,12 @@ const formatViews = (views: number): string => {
   return `${views} views`;
 };
 
-export const VideoCard = ({ video }: VideoCardProps) => {
+export const VideoCard = ({ video, onClick }: VideoCardProps) => {
   return (
-    <div className="group relative flex flex-col bg-card hover:bg-card-hover rounded-2xl overflow-hidden border border-white/5 shadow-lg hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300">
+    <div
+      onClick={() => onClick?.(video)}
+      className="group relative flex flex-col bg-card hover:bg-card-hover rounded-2xl overflow-hidden border border-white/5 shadow-lg hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 cursor-pointer"
+    >
       {/* Thumbnail section */}
       <div className="relative aspect-video w-full overflow-hidden bg-black/40">
         <img
