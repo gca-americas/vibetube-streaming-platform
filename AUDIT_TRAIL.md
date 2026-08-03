@@ -27,7 +27,8 @@
 
 ## Phase 4: SQLite Database Integration (2026-08-03)
 - **Database Layer Transition**: Migrated backend data storage from direct file reads of `mockVideos.json` to a local SQLite database (`vibeflix.db`).
-- **Automated Seeding on Startup**: Implemented `init_db()` in `backend/main.py` to create the schema and seed the initial dataset on first boot.
+- **Database Code Modularization**: Created a separate `database.py` file to isolate database connections, table creation, and seed queries, importing them cleanly in `main.py`.
+- **Automated Seeding on Startup**: Implemented `init_db()` in `backend/database.py` to create the schema and seed the initial dataset on first boot.
 - **Dynamic SQL Querying**: Updated the `GET /api/videos` endpoint to query the SQLite table directly.
 - **Excluded Binary DBs from Git**: Appended `*.db` to `.gitignore`.
 - **Verification**: Successfully fetched seeded video records from the SQLite database.
