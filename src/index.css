@@ -10,12 +10,17 @@
   --color-vibe-purple: #8b5cf6;
   --color-vibe-purple-glow: rgba(139, 92, 246, 0.3);
   
-  --color-stage: #08080b;
-  --color-card: #121217;
-  --color-card-hover: #1b1b22;
-  --color-input: #17171f;
+  --color-stage: var(--color-stage);
+  --color-card: var(--color-card);
+  --color-card-hover: var(--color-card-hover);
+  --color-input: var(--color-input);
   
-  --color-spotlight: rgba(229, 9, 20, 0.12);
+  --color-spotlight: var(--color-spotlight);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-hairline: var(--hairline);
+  --color-overlay: var(--overlay);
 
   --animate-fade-in: fade-in 0.25s ease-out;
 
@@ -29,10 +34,31 @@
   }
 }
 :root {
-  --bg: var(--color-stage);
+  --bg: #08080b;
   --fg: #f5f3f0;
   --fg-muted: #9ca3af;
   --hairline: rgba(255, 255, 255, 0.08);
+  --overlay: rgba(255, 255, 255, 0.05);
+
+  --color-stage: #08080b;
+  --color-card: #121217;
+  --color-card-hover: #1b1b22;
+  --color-input: #17171f;
+  --color-spotlight: rgba(229, 9, 20, 0.12);
+}
+
+:root.light {
+  --bg: #f9f9fb;
+  --fg: #18181b;
+  --fg-muted: #71717a;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --overlay: rgba(0, 0, 0, 0.04);
+
+  --color-stage: #f9f9fb;
+  --color-card: #ffffff;
+  --color-card-hover: #f4f4f5;
+  --color-input: #ffffff;
+  --color-spotlight: rgba(139, 92, 246, 0.06);
 }
 
 body {

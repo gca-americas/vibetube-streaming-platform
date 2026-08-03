@@ -32,7 +32,7 @@ export const VideoCard = ({ video, onClick }: VideoCardProps) => {
   return (
     <div
       onClick={() => onClick?.(video)}
-      className="group relative flex flex-col bg-card hover:bg-card-hover rounded-2xl overflow-hidden border border-white/5 shadow-lg hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 cursor-pointer"
+      className="group relative flex flex-col bg-card hover:bg-card-hover rounded-2xl overflow-hidden border border-hairline shadow-lg hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 cursor-pointer"
     >
       {/* Thumbnail section */}
       <div className="relative aspect-video w-full overflow-hidden bg-black/40">
@@ -51,7 +51,7 @@ export const VideoCard = ({ video, onClick }: VideoCardProps) => {
         </div>
 
         {/* Video Duration Badge */}
-        <span className="absolute bottom-3 right-3 px-2 py-0.5 bg-black/75 backdrop-blur-sm text-xs font-semibold text-white tracking-wide rounded-md border border-white/5">
+        <span className="absolute bottom-3 right-3 px-2 py-0.5 bg-black/75 backdrop-blur-sm text-xs font-semibold text-white tracking-wide rounded-md border border-hairline">
           {video.duration}
         </span>
       </div>
@@ -63,23 +63,23 @@ export const VideoCard = ({ video, onClick }: VideoCardProps) => {
           <img
             src={video.channelAvatar}
             alt={video.channelName}
-            className="w-10 h-10 rounded-full object-cover border border-white/10"
+            className="w-10 h-10 rounded-full object-cover border border-hairline"
           />
         </div>
 
         {/* Title / Channel / Stats */}
         <div className="flex flex-col min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-snug text-white line-clamp-2 group-hover:text-vibe-red transition-colors duration-200" title={video.title}>
+          <h3 className="text-sm font-semibold leading-snug text-fg line-clamp-2 group-hover:text-vibe-red transition-colors duration-200" title={video.title}>
             {video.title}
           </h3>
           
-          <p className="text-xs text-gray-400 mt-1.5 font-medium truncate">
+          <p className="text-xs text-fg-muted mt-1.5 font-medium truncate">
             {video.channelName}
           </p>
           
-          <div className="flex items-center text-xs text-gray-500 mt-1 font-medium gap-1.5">
+          <div className="flex items-center text-xs text-fg-muted mt-1 font-medium gap-1.5">
             <span>{formatViews(video.views)}</span>
-            <span className="w-1 h-1 bg-gray-600 rounded-full"></span>
+            <span className="w-1 h-1 bg-fg-muted/40 rounded-full"></span>
             <span>{video.uploadedAt}</span>
           </div>
         </div>
