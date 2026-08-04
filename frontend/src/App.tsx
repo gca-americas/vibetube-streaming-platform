@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { SearchBar } from "./components/SearchBar";
 import { VideoCard, Video } from "./components/VideoCard";
 import { VideoPlayerModal } from "./components/VideoPlayerModal";
-import { Film, Sun, Moon } from "lucide-react";
+import { UploadModal } from "./components/UploadModal";
+import { Film, Sun, Moon, Plus } from "lucide-react";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -15,6 +16,7 @@ export default function App() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   // Sync theme changes with the DOM element class list
   useEffect(() => {
@@ -25,8 +27,9 @@ export default function App() {
     }
   }, [theme]);
 
-  // Fetch videos from backend server on mount
-  useEffect(() => {
+  // Fetch videos function
+  const fetchVideos = () => {
+    setLoading(true);
     fetch("/api/videos")
       .then((res) => {
         if (!res.ok) {
@@ -42,6 +45,11 @@ export default function App() {
         setError(err.message);
         setLoading(false);
       });
+  };
+
+  // Fetch videos from backend server on mount
+  useEffect(() => {
+    fetchVideos();
   }, []);
 
   const toggleTheme = () => {
@@ -65,8 +73,18 @@ export default function App() {
     <div className="min-h-screen stage-vignette relative bg-stage text-fg flex flex-col transition-colors duration-300">
       {/* Background vignette wrapper */}
       <div className="relative z-10 flex-1 flex flex-col px-4 py-8 md:px-8 max-w-7xl mx-auto w-full">
-        {/* Theme Toggle Button */}
-        <div className="absolute top-6 right-4 md:right-8">
+        {/* Controls Container */}
+        <div className="absolute top-6 right-4 md:right-8 flex items-center gap-2">
+          {/* Upload Button */}
+          <button
+            onClick={() => setUploadOpen(true)}
+            className="p-2.5 rounded-full bg-card hover:bg-card-hover border border-hairline text-fg-muted hover:text-fg shadow-lg transition-all duration-200 cursor-pointer"
+            aria-label="Publish new stream"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+
+          {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}
             className="p-2.5 rounded-full bg-card hover:bg-card-hover border border-hairline text-fg-muted hover:text-fg shadow-lg transition-all duration-200 cursor-pointer"
@@ -160,6 +178,14 @@ export default function App() {
         <VideoPlayerModal
           video={selectedVideo}
           onClose={() => setSelectedVideo(null)}
+        />
+      )}
+
+      {/* Upload Modal */}
+      {uploadOpen && (
+        <UploadModal
+          onClose={() => setUploadOpen(false)}
+          onUploadSuccess={fetchVideos}
         />
       )}
     </div>

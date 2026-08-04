@@ -32,3 +32,9 @@
 - **Dynamic SQL Querying**: Updated the `GET /api/videos` endpoint to query the SQLite table directly.
 - **Excluded Binary DBs from Git**: Appended `*.db` to `.gitignore`.
 - **Verification**: Successfully fetched seeded video records from the SQLite database.
+
+## Phase 5: Video Upload Capability (2026-08-03)
+- **Created Video POST Endpoint**: Developed `POST /api/videos` in `backend/main.py` utilizing Pydantic models to validate metadata and insert new records into the SQLite database.
+- **Created Upload Modal Form**: Added `UploadModal.tsx` in `frontend/src/components/` allowing users to input title, description, video stream, and creator credentials.
+- **Wired UI Refresh**: Updated `App.tsx` to include the "+" button in the header, state hooks to toggle the upload modal, and dynamic server re-fetching on successful uploads.
+- **Verification**: Tested successful JSON insertions via cURL and verified Vite client production builds compiled cleanly.
