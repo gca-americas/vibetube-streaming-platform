@@ -29,10 +29,18 @@ def init_db():
                 views INTEGER DEFAULT 0,
                 uploadedAt TEXT,
                 channelName TEXT,
-                channelAvatar TEXT
+                channelAvatar TEXT,
+                userId TEXT
             )
         """)
         conn.commit()
+        
+        # Check if userId column exists in videos table for migration
+        cursor.execute("PRAGMA table_info(videos)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "userId" not in columns:
+            cursor.execute("ALTER TABLE videos ADD COLUMN userId TEXT")
+            conn.commit()
         
         if not db_exists:
             json_path = os.path.join(os.path.dirname(__file__), "mockVideos.json")

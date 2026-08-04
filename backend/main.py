@@ -3,11 +3,12 @@ import shutil
 import uvicorn
 import uuid
 import mimetypes
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from database import init_db, get_db_conn
+from auth import get_current_user
 
 # Explicitly register HLS MIME types
 mimetypes.add_type("application/x-mpegURL", ".m3u8")
@@ -45,8 +46,8 @@ async def create_video(
     title: str = Form(...),
     description: str = Form(""),
     duration: str = Form("3:00"),
-    channelName: str = Form("VibeCreator"),
-    videoFile: UploadFile = File(...)
+    videoFile: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
 ):
     # Save the binary video file
     file_extension = os.path.splitext(videoFile.filename)[1]
@@ -57,6 +58,11 @@ async def create_video(
         shutil.copyfileobj(videoFile.file, buffer)
         
     video_url = f"/uploads/{unique_filename}"
+    
+    # Get user profile information
+    user_id = current_user["uid"]
+    channel_name = current_user.get("name") or current_user.get("email") or "VibeCreator"
+    channel_avatar = current_user.get("picture") or "/images/avatars/v1.jpg"
     
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -74,8 +80,8 @@ async def create_video(
         cursor.execute("""
             INSERT INTO videos (
                 id, title, description, thumbnailUrl, videoUrl,
-                duration, views, uploadedAt, channelName, channelAvatar
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                duration, views, uploadedAt, channelName, channelAvatar, userId
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             video_id,
             title,
@@ -85,8 +91,9 @@ async def create_video(
             duration,
             0, # views
             "Just now",
-            channelName,
-            "/images/avatars/v1.jpg" # fallback avatar URL
+            channel_name,
+            channel_avatar,
+            user_id
         ))
         conn.commit()
         return {"id": video_id, "status": "success"}

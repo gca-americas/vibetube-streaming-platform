@@ -45,3 +45,18 @@
 - **Created Frontend File Picker**: Refactored `UploadModal.tsx` to include a file picker and submit payloads using standard `FormData` objects.
 - **Excluded Upload Binaries**: Appended `backend/uploads/` to `.gitignore`.
 - **Verification**: Verified binary file persistence and client playback.
+
+## Phase 7: Video Transcoding & HLS Streaming (2026-08-04)
+- **Implemented Transcoder CLI**: Developed a Python Click CLI in `transcoder/cli.py` and `converter.py` using `ffmpeg` to transcode input files to HLS formats (480p, 720p, 1080p, and `master.m3u8` playlists) and standalone MP4 files.
+- **Added HLS Server Types**: Configured FastAPI backend to explicitly register `.m3u8` (`application/x-mpegURL`) and `.ts` (`video/MP2T`) MIME types.
+- **Integrated Frontend HLS Player**: Loaded `hls.js` from CDN in `index.html` and refactored `VideoPlayerModal.tsx` to dynamically attach the HLS parsing engine with a native Safari fallback.
+- **Fixed Aspect-Ratio Video Scaling**: Bounded the HTML5 `<video>` tag within absolute constraints (`absolute inset-0`) in `VideoPlayerModal.tsx` to correct viewport overflow and letterbox vertical/portrait videos properly.
+- **Verification**: Transcoded test movie `IMG_1735.MOV` successfully and verified correct MIME headers and layout scaling on local development servers.
+
+## Phase 8: Firebase Authentication & User Management (2026-08-04)
+- **Loaded Firebase compat library**: Included the Firebase App and Auth compat scripts from Google's CDN inside `index.html`.
+- **Created Auth service with Mock mode**: Developed `firebase.ts` supporting standard auth callbacks, featuring a transparent `MockAuth` simulation that runs automatically in local environment if credentials are not configured, permitting offline testing.
+- **Added RS256 JWT Verification**: Created `backend/auth.py` verifying Firebase ID tokens manually via base64url parsing, fetching/caching Google's certificates, and verifying RSA signatures using preinstalled `cryptography` library.
+- **Upgraded Database Schema**: Modified `backend/database.py` to auto-migrate the SQLite schema on boot, adding `userId TEXT` column to the `videos` table.
+- **Secured Upload Endpoint & UI Controls**: Enforced authentication on `POST /api/videos`, pre-populating upload details from user profiles. Conditionalized the header controls so the `+` upload button is only visible to logged-in users, adding Google login buttons to `AuthModal.tsx`.
+- **Verification**: Verified React builds compiled cleanly via `npx tsc --noEmit` and verified both Google Sign-in and email logins mock successfully in offline mode.

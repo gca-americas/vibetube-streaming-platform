@@ -3,7 +3,9 @@ import { SearchBar } from "./components/SearchBar";
 import { VideoCard, Video } from "./components/VideoCard";
 import { VideoPlayerModal } from "./components/VideoPlayerModal";
 import { UploadModal } from "./components/UploadModal";
-import { Film, Sun, Moon, Plus } from "lucide-react";
+import { AuthModal } from "./components/AuthModal";
+import { getAuth } from "./services/firebase";
+import { Film, Sun, Moon, Plus, LogOut, LogIn } from "lucide-react";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -17,6 +19,17 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  // Listen for user auth state changes
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = auth.onAuthStateChanged((currentUser: any) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Sync theme changes with the DOM element class list
   useEffect(() => {
@@ -76,13 +89,15 @@ export default function App() {
         {/* Controls Container */}
         <div className="absolute top-6 right-4 md:right-8 flex items-center gap-2">
           {/* Upload Button */}
-          <button
-            onClick={() => setUploadOpen(true)}
-            className="p-2.5 rounded-full bg-card hover:bg-card-hover border border-hairline text-fg-muted hover:text-fg shadow-lg transition-all duration-200 cursor-pointer"
-            aria-label="Publish new stream"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          {user && (
+            <button
+              onClick={() => setUploadOpen(true)}
+              className="p-2.5 rounded-full bg-card hover:bg-card-hover border border-hairline text-fg-muted hover:text-fg shadow-lg transition-all duration-200 cursor-pointer"
+              aria-label="Publish new stream"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Theme Toggle Button */}
           <button
@@ -96,6 +111,33 @@ export default function App() {
               <Moon className="w-5 h-5 text-indigo-500" />
             )}
           </button>
+
+          {/* Authentication Actions */}
+          {user ? (
+            <div className="flex items-center gap-2">
+              <img
+                src={user.photoURL}
+                alt={user.displayName}
+                title={user.displayName}
+                className="w-10 h-10 rounded-full object-cover border border-hairline"
+              />
+              <button
+                onClick={() => getAuth().signOut()}
+                className="p-2.5 rounded-full bg-card hover:bg-card-hover border border-hairline text-fg-muted hover:text-red-400 shadow-lg transition-all duration-200 cursor-pointer"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-bold text-sm shadow-lg shadow-red-500/10 cursor-pointer transition-all duration-150"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
+            </button>
+          )}
         </div>
 
         {/* Header Section */}
@@ -188,6 +230,12 @@ export default function App() {
           onUploadSuccess={fetchVideos}
         />
       )}
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+      />
     </div>
   );
 }

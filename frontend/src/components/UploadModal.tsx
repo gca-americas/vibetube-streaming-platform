@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X } from "lucide-react";
+import { getAuth } from "../services/firebase";
 
 interface UploadModalProps {
   onClose: () => void;
@@ -11,7 +12,6 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
   const [description, setDescription] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [duration, setDuration] = useState("0:52");
-  const [channelName, setChannelName] = useState("Me");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,17 +37,28 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
     formData.append("title", title);
     formData.append("description", description);
     formData.append("duration", duration);
-    formData.append("channelName", channelName);
     formData.append("videoFile", videoFile);
 
     try {
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error("You must be logged in to upload videos.");
+      }
+      
+      const token = await user.getIdToken();
+
       const res = await fetch("/api/videos", {
         method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
         body: formData,
       });
 
       if (!res.ok) {
-        throw new Error("Failed to upload video file");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to upload video file");
       }
 
       onUploadSuccess();
@@ -118,25 +129,14 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
             />
           </div>
 
-          <div className="flex gap-4">
-            <div className="flex-1 flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Duration</label>
-              <input
-                placeholder="e.g. 15:40"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors"
-              />
-            </div>
-            <div className="flex-1 flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Creator Name</label>
-              <input
-                placeholder="e.g. VibeCreator"
-                value={channelName}
-                onChange={(e) => setChannelName(e.target.value)}
-                className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors"
-              />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Duration</label>
+            <input
+              placeholder="e.g. 15:40"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors"
+            />
           </div>
 
           <button
