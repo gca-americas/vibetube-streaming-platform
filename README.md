@@ -42,16 +42,3 @@ To preview the production build locally before deploying, run:
 npm run preview
 ```
 
----
-
-## Project Structure
-
-Here is an overview of the key files and directories:
-- `src/main.tsx` - Entry point that mounts the React application.
-- `src/App.tsx` - Root application component.
-- `src/components/` - Reusable UI components:
-  - [`SearchBar.tsx`](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/src/components/SearchBar.tsx) - The centered glassmorphism search bar with animations.
-  - [`VideoCard.tsx`](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/src/components/VideoCard.tsx) - Card layout representing individual videos.
-- `src/data/mockVideos.json` - Source of truth for mock video metadata.
-- `src/index.css` - Custom styling imports and Tailwind configuration.
-- [`ARCHITECTURE.md`](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/ARCHITECTURE.md) - Detailed architecture document and design guidelines.
