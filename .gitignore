@@ -11,6 +11,7 @@ __pycache__/
 # Local cache directories
 .vite/
 *.db
+backend/uploads/
 
 # Production build output
 dist/

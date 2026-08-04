@@ -1,9 +1,11 @@
+import os
+import shutil
 import uvicorn
 import uuid
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from fastapi.staticfiles import StaticFiles
 from database import init_db, get_db_conn
 
 app = FastAPI(title="Vibeflix API")
@@ -17,14 +19,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class VideoCreate(BaseModel):
-    title: str = Field(..., min_length=1)
-    description: str = Field("")
-    thumbnailUrl: str = Field("")
-    videoUrl: str = Field(..., min_length=1)
-    duration: str = Field("3:00")
-    channelName: str = Field("VibeCreator")
-    channelAvatar: str = Field("/images/avatars/v1.jpg")
+# Configure upload directory
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Mount static files to serve video uploads
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.get("/api/videos")
 def get_videos():
@@ -36,7 +36,23 @@ def get_videos():
         return JSONResponse(content=videos)
 
 @app.post("/api/videos")
-def create_video(video: VideoCreate):
+async def create_video(
+    title: str = Form(...),
+    description: str = Form(""),
+    duration: str = Form("3:00"),
+    channelName: str = Form("VibeCreator"),
+    videoFile: UploadFile = File(...)
+):
+    # Save the binary video file
+    file_extension = os.path.splitext(videoFile.filename)[1]
+    unique_filename = f"{uuid.uuid4().hex}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(videoFile.file, buffer)
+        
+    video_url = f"/uploads/{unique_filename}"
+    
     with get_db_conn() as conn:
         cursor = conn.cursor()
         
@@ -57,15 +73,15 @@ def create_video(video: VideoCreate):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             video_id,
-            video.title,
-            video.description,
-            video.thumbnailUrl or "/images/thumbnails/v1.jpg",
-            video.videoUrl,
-            video.duration,
+            title,
+            description,
+            "/images/thumbnails/v1.jpg", # fallback thumbnail URL
+            video_url,
+            duration,
             0, # views
             "Just now",
-            video.channelName,
-            video.channelAvatar
+            channelName,
+            "/images/avatars/v1.jpg" # fallback avatar URL
         ))
         conn.commit()
         return {"id": video_id, "status": "success"}

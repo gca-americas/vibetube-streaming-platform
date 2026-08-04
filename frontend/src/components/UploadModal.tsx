@@ -9,37 +9,45 @@ interface UploadModalProps {
 export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [videoUrl, setVideoUrl] = useState("https://media.w3.org/2010/05/sintel/trailer_hd.mp4");
-  const [thumbnailUrl, setThumbnailUrl] = useState("/images/thumbnails/v1.jpg");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [duration, setDuration] = useState("0:52");
   const [channelName, setChannelName] = useState("Me");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setVideoFile(e.target.files[0]);
+      // Auto-populate title if empty
+      if (!title) {
+        const baseName = e.target.files[0].name.replace(/\.[^/.]+$/, ""); // strip extension
+        setTitle(baseName);
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !videoUrl) return;
+    if (!title || !videoFile) return;
 
     setLoading(true);
     setError(null);
 
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("description", description);
+    formData.append("duration", duration);
+    formData.append("channelName", channelName);
+    formData.append("videoFile", videoFile);
+
     try {
       const res = await fetch("/api/videos", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          description,
-          videoUrl,
-          thumbnailUrl,
-          duration,
-          channelName,
-          channelAvatar: "/images/avatars/v1.jpg",
-        }),
+        body: formData,
       });
 
       if (!res.ok) {
-        throw new Error("Failed to upload video");
+        throw new Error("Failed to upload video file");
       }
 
       onUploadSuccess();
@@ -79,6 +87,17 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Video File *</label>
+            <input
+              required
+              type="file"
+              accept="video/*"
+              onChange={handleFileChange}
+              className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors cursor-pointer"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Title *</label>
             <input
               required
@@ -96,27 +115,6 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple h-24 resize-none transition-colors"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Video Stream URL *</label>
-            <input
-              required
-              placeholder="e.g. https://.../stream.mp4"
-              value={videoUrl}
-              onChange={(e) => setVideoUrl(e.target.value)}
-              className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Thumbnail URL</label>
-            <input
-              placeholder="e.g. /images/thumbnails/custom.jpg"
-              value={thumbnailUrl}
-              onChange={(e) => setThumbnailUrl(e.target.value)}
-              className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors"
             />
           </div>
 

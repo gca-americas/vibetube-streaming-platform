@@ -38,3 +38,10 @@
 - **Created Upload Modal Form**: Added `UploadModal.tsx` in `frontend/src/components/` allowing users to input title, description, video stream, and creator credentials.
 - **Wired UI Refresh**: Updated `App.tsx` to include the "+" button in the header, state hooks to toggle the upload modal, and dynamic server re-fetching on successful uploads.
 - **Verification**: Tested successful JSON insertions via cURL and verified Vite client production builds compiled cleanly.
+
+## Phase 6: Binary File Uploads (2026-08-03)
+- **Implemented Local File Uploads**: Modified `POST /api/videos` to accept binary `UploadFile` payloads via `multipart/form-data` and write them to a local `backend/uploads/` directory.
+- **Added Static Video Serving**: Mounted the uploads directory as a static folder in FastAPI and added proxy routes for `/uploads` in `vite.config.ts`.
+- **Created Frontend File Picker**: Refactored `UploadModal.tsx` to include a file picker and submit payloads using standard `FormData` objects.
+- **Excluded Upload Binaries**: Appended `backend/uploads/` to `.gitignore`.
+- **Verification**: Verified binary file persistence and client playback.
