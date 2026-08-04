@@ -35,3 +35,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Video assets and transcoder output directories
+*.MOV
+*.mov
+*_transcoded/
+

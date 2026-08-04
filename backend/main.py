@@ -2,11 +2,16 @@ import os
 import shutil
 import uvicorn
 import uuid
+import mimetypes
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from database import init_db, get_db_conn
+
+# Explicitly register HLS MIME types
+mimetypes.add_type("application/x-mpegURL", ".m3u8")
+mimetypes.add_type("video/MP2T", ".ts")
 
 app = FastAPI(title="Vibeflix API")
 

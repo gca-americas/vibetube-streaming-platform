@@ -13,14 +13,46 @@ export const VideoPlayerModal = ({
 }: VideoPlayerModalProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Auto-play the video when the source changes
+  // Load and play the video when the video or source changes
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.load();
-      videoRef.current.play().catch((err) => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    let hlsInstance: any = null;
+
+    if (video.videoUrl.endsWith(".m3u8")) {
+      const Hls = (window as any).Hls;
+      if (Hls && Hls.isSupported()) {
+        hlsInstance = new Hls();
+        hlsInstance.loadSource(video.videoUrl);
+        hlsInstance.attachMedia(videoElement);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+          videoElement.play().catch((err) => {
+            console.log("Auto-play was prevented by browser policies:", err);
+          });
+        });
+      } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
+        // Native support (e.g. Safari)
+        videoElement.src = video.videoUrl;
+        videoElement.load();
+        videoElement.play().catch((err) => {
+          console.log("Auto-play was prevented by browser policies:", err);
+        });
+      }
+    } else {
+      // Standard video format (e.g., MP4)
+      videoElement.src = video.videoUrl;
+      videoElement.load();
+      videoElement.play().catch((err) => {
         console.log("Auto-play was prevented by browser policies:", err);
       });
     }
+
+    return () => {
+      if (hlsInstance) {
+        hlsInstance.destroy();
+      }
+    };
   }, [video]);
 
   // Lock body scroll when modal is open
@@ -52,10 +84,9 @@ export const VideoPlayerModal = ({
           <div className="relative aspect-video w-full bg-black">
             <video
               ref={videoRef}
-              src={video.videoUrl}
               controls
               autoPlay
-              className="w-full h-full object-contain"
+              className="absolute inset-0 w-full h-full object-contain"
             />
           </div>
 
