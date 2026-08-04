@@ -114,3 +114,46 @@ def generate_master_playlist(output_dir: str, processed_resolutions: list[str]) 
         f.write("\n".join(lines) + "\n")
         
     return master_path
+
+def get_video_duration(input_path: str) -> float:
+    """Returns the duration of the video in seconds using ffprobe."""
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        input_path
+    ]
+    try:
+        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return float(result.stdout.strip())
+    except Exception:
+        # Fallback to 0 if ffprobe fails or is not present
+        return 0.0
+
+def extract_thumbnail(input_path: str, output_dir: str) -> str:
+    """
+    Extracts a frame from the input video as a thumbnail image.
+    Uses the calculated middle of the video.
+    Returns the path to the generated thumbnail JPEG.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    thumbnail_path = os.path.join(output_dir, "thumbnail.jpg")
+    
+    duration = get_video_duration(input_path)
+    # Use midpoint if duration is valid; fallback to 1.0 second
+    timestamp = str(duration / 2.0) if duration > 0 else "1.0"
+    
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", timestamp,
+        "-i", input_path,
+        "-vframes", "1",
+        "-q:v", "2",
+        thumbnail_path
+    ]
+    
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return thumbnail_path
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"FFmpeg thumbnail extraction failed with exit code {e.returncode}.\nError details:\n{e.stderr}")

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Mail, Lock, AlertCircle } from "lucide-react";
+import { X, Mail, Lock, AlertCircle, User } from "lucide-react";
 import { getAuth } from "../services/firebase";
 
 interface AuthModalProps {
@@ -10,6 +10,7 @@ interface AuthModalProps {
 export const AuthModal = ({ isOpen, onClose }: AuthModalProps) => {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export const AuthModal = ({ isOpen, onClose }: AuthModalProps) => {
     try {
       const auth = getAuth();
       if (isRegister) {
-        await auth.createUserWithEmailAndPassword(email, password);
+        await auth.createUserWithEmailAndPassword(email, password, displayName);
       } else {
         await auth.signInWithEmailAndPassword(email, password);
       }
@@ -98,6 +99,25 @@ export const AuthModal = ({ isOpen, onClose }: AuthModalProps) => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {isRegister && (
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-fg-muted font-bold uppercase tracking-wider">
+                Display Name
+              </label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-muted" />
+                <input
+                  type="text"
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Your Name / Channel"
+                  className="w-full bg-[#161622]/65 hover:bg-[#1a1a29]/80 focus:bg-[#1a1a29] border border-hairline focus:border-red-500/40 rounded-xl py-3 pl-12 pr-4 text-sm text-fg outline-none transition-all duration-200"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2">
             <label className="text-xs text-fg-muted font-bold uppercase tracking-wider">
               Email Address

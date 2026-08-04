@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { X, User } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Video } from "./VideoCard";
 
@@ -107,11 +107,17 @@ export const VideoPlayerModal = ({
 
             {/* Channel Info */}
             <div className="flex items-start gap-4">
-              <img
-                src={video.channelAvatar}
-                alt={video.channelName}
-                className="w-12 h-12 rounded-full object-cover border border-hairline"
-              />
+              {video.channelAvatar && video.channelAvatar !== "?" ? (
+                <img
+                  src={video.channelAvatar}
+                  alt={video.channelName}
+                  className="w-12 h-12 rounded-full object-cover border border-hairline"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-stage border border-hairline flex items-center justify-center text-fg-muted shrink-0">
+                  <User className="w-6 h-6" />
+                </div>
+              )}
               <div className="min-w-0 flex-1">
                 <h4 className="font-bold text-fg text-sm mb-1">
                   {video.channelName}

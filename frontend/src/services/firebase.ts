@@ -38,11 +38,15 @@ class MockAuth {
 
   async signInWithEmailAndPassword(email: string, _: string) {
     const username = email.split("@")[0];
+    let displayName = username.charAt(0).toUpperCase() + username.slice(1);
+    if (email === "loganjhennessy@gmail.com") {
+      displayName = "ljhenne";
+    }
     this.currentUser = {
       uid: `mock-uid-${username}`,
       email: email,
-      displayName: username.charAt(0).toUpperCase() + username.slice(1),
-      photoURL: "/images/avatars/v1.jpg",
+      displayName: displayName,
+      photoURL: "?",
       getIdToken: async () => `mock-token-${username}`
     };
     localStorage.setItem("mock_user", JSON.stringify(this.currentUser));
@@ -50,8 +54,19 @@ class MockAuth {
     return { user: this.currentUser };
   }
 
-  async createUserWithEmailAndPassword(email: string, _: string) {
-    return this.signInWithEmailAndPassword(email, "");
+  async createUserWithEmailAndPassword(email: string, _: string, displayName?: string) {
+    const username = email.split("@")[0];
+    let finalDisplayName = displayName || (email === "loganjhennessy@gmail.com" ? "ljhenne" : (username.charAt(0).toUpperCase() + username.slice(1)));
+    this.currentUser = {
+      uid: `mock-uid-${username}`,
+      email: email,
+      displayName: finalDisplayName,
+      photoURL: "?",
+      getIdToken: async () => `mock-token-${username}`
+    };
+    localStorage.setItem("mock_user", JSON.stringify(this.currentUser));
+    this.notify();
+    return { user: this.currentUser };
   }
 
   async signOut() {
@@ -90,7 +105,15 @@ export const getAuth = () => {
   return {
     onAuthStateChanged: (callback: any) => rawAuth.onAuthStateChanged(callback),
     signInWithEmailAndPassword: (e: string, p: string) => rawAuth.signInWithEmailAndPassword(e, p),
-    createUserWithEmailAndPassword: (e: string, p: string) => rawAuth.createUserWithEmailAndPassword(e, p),
+    createUserWithEmailAndPassword: async (e: string, p: string, displayName?: string) => {
+      const credential = await rawAuth.createUserWithEmailAndPassword(e, p);
+      if (displayName && credential.user) {
+        await credential.user.updateProfile({
+          displayName: displayName
+        });
+      }
+      return credential;
+    },
     signInWithPopup: (provider: any) => rawAuth.signInWithPopup(provider),
     signOut: () => rawAuth.signOut(),
     get currentUser() {
@@ -100,7 +123,7 @@ export const getAuth = () => {
         uid: user.uid,
         email: user.email,
         displayName: user.displayName || user.email?.split("@")[0],
-        photoURL: user.photoURL || "/images/avatars/v1.jpg",
+        photoURL: user.photoURL || "?",
         getIdToken: async () => user.getIdToken()
       };
     }

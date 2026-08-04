@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { Play, User } from "lucide-react";
 
 export interface Video {
   id: string;
@@ -35,13 +35,19 @@ export const VideoCard = ({ video, onClick }: VideoCardProps) => {
       className="group relative flex flex-col bg-card hover:bg-card-hover rounded-2xl overflow-hidden border border-hairline shadow-lg hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 cursor-pointer"
     >
       {/* Thumbnail section */}
-      <div className="relative aspect-video w-full overflow-hidden bg-black/40">
-        <img
-          src={video.thumbnailUrl}
-          alt={video.title}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
-        />
+      <div className="relative aspect-video w-full overflow-hidden bg-black/40 flex items-center justify-center">
+        {video.thumbnailUrl && video.thumbnailUrl !== "?" ? (
+          <img
+            src={video.thumbnailUrl}
+            alt={video.title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          <div className="text-4xl font-bold text-fg-muted select-none">
+            ?
+          </div>
+        )}
         
         {/* Hover overlay with Play button */}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
@@ -60,11 +66,17 @@ export const VideoCard = ({ video, onClick }: VideoCardProps) => {
       <div className="flex gap-3 p-4 flex-1">
         {/* Channel Avatar */}
         <div className="flex-shrink-0">
-          <img
-            src={video.channelAvatar}
-            alt={video.channelName}
-            className="w-10 h-10 rounded-full object-cover border border-hairline"
-          />
+          {video.channelAvatar && video.channelAvatar !== "?" ? (
+            <img
+              src={video.channelAvatar}
+              alt={video.channelName}
+              className="w-10 h-10 rounded-full object-cover border border-hairline"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-stage border border-hairline flex items-center justify-center text-fg-muted">
+              <User className="w-5 h-5" />
+            </div>
+          )}
         </div>
 
         {/* Title / Channel / Stats */}

@@ -5,7 +5,7 @@ import { VideoPlayerModal } from "./components/VideoPlayerModal";
 import { UploadModal } from "./components/UploadModal";
 import { AuthModal } from "./components/AuthModal";
 import { getAuth } from "./services/firebase";
-import { Film, Sun, Moon, Plus, LogOut, LogIn } from "lucide-react";
+import { Film, Sun, Moon, Plus, LogOut, LogIn, User } from "lucide-react";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -115,12 +115,18 @@ export default function App() {
           {/* Authentication Actions */}
           {user ? (
             <div className="flex items-center gap-2">
-              <img
-                src={user.photoURL}
-                alt={user.displayName}
-                title={user.displayName}
-                className="w-10 h-10 rounded-full object-cover border border-hairline"
-              />
+              {user.photoURL && user.photoURL !== "?" ? (
+                <img
+                  src={user.photoURL}
+                  alt={user.displayName}
+                  title={user.displayName}
+                  className="w-10 h-10 rounded-full object-cover border border-hairline"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-stage border border-hairline flex items-center justify-center text-fg-muted" title={user.displayName}>
+                  <User className="w-5 h-5" />
+                </div>
+              )}
               <button
                 onClick={() => getAuth().signOut()}
                 className="p-2.5 rounded-full bg-card hover:bg-card-hover border border-hairline text-fg-muted hover:text-red-400 shadow-lg transition-all duration-200 cursor-pointer"

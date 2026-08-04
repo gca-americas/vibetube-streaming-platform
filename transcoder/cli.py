@@ -7,7 +7,8 @@ from converter import (
     check_ffmpeg,
     transcode_to_mp4,
     transcode_to_hls,
-    generate_master_playlist
+    generate_master_playlist,
+    extract_thumbnail
 )
 
 @click.command()
@@ -115,6 +116,18 @@ def main(input_file, output_dir, format, resolution):
                 any_failures = True
         click.echo("")
                 
+    # 6.5. Extract Thumbnail
+    click.secho("-> Extracting Thumbnail Frame", fg="yellow", bold=True)
+    try:
+        thumbnail_file = extract_thumbnail(input_file_abs, output_dir)
+        click.secho("   [Thumbnail] Extraction successful", fg="green")
+        click.echo(f"               Saved: {thumbnail_file}")
+    except Exception as e:
+        click.secho("   [Thumbnail] Extraction failed", fg="red", bold=True)
+        click.secho(f"               Error: {e}\n", fg="red", err=True)
+        any_failures = True
+    click.echo("")
+
     # 7. Print Completion Status
     click.secho("========================================", fg="blue", bold=True)
     if any_failures:

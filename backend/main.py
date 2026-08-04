@@ -62,7 +62,7 @@ async def create_video(
     # Get user profile information
     user_id = current_user["uid"]
     channel_name = current_user.get("name") or current_user.get("email") or "VibeCreator"
-    channel_avatar = current_user.get("picture") or "/images/avatars/v1.jpg"
+    channel_avatar = current_user.get("picture") or "?"
     
     with get_db_conn() as conn:
         cursor = conn.cursor()
