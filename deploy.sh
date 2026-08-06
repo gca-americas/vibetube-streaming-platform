@@ -2,18 +2,18 @@
 set -e
 
 # Configuration
-PROJECT_ID="vibeflix-sandbox"
+PROJECT_ID="vibetube-sandbox"
 REGION="us-central1"
-REPO_NAME="vibeflix-streaming-platform"
-DB_INSTANCE_NAME="vibeflix-db-instance"
-RAW_BUCKET="vibeflix-sandbox-raw-videos"
-PUBLIC_BUCKET="vibeflix-sandbox-public-streams"
+REPO_NAME="vibetube-streaming-platform"
+DB_INSTANCE_NAME="vibetube-db-instance"
+RAW_BUCKET="vibetube-sandbox-raw-videos"
+PUBLIC_BUCKET="vibetube-sandbox-public-streams"
 JOB_NAME="transcoder-job"
 SECRET_TOKEN="vibe_secret_123"
 DB_PASSWORD="vibe_password_123"
 
 echo "==============================================="
-echo "  Starting Vibeflix Deployment Orchestrator    "
+echo "  Starting Vibetube Deployment Orchestrator    "
 echo "==============================================="
 
 # 1. Select the correct GCP project
@@ -79,8 +79,8 @@ if ! gcloud sql instances describe ${DB_INSTANCE_NAME} >/dev/null 2>&1; then
     --instance=${DB_INSTANCE_NAME} \
     --password=${DB_PASSWORD}
     
-  echo "   Creating database 'vibeflix'..."
-  gcloud sql databases create vibeflix --instance=${DB_INSTANCE_NAME}
+  echo "   Creating database 'vibetube'..."
+  gcloud sql databases create vibetube --instance=${DB_INSTANCE_NAME}
 fi
 
 # 5. Create Artifact Registry
@@ -118,7 +118,7 @@ gcloud run deploy backend-service \
   --region=${REGION} \
   --allow-unauthenticated \
   --add-cloudsql-instances=${PROJECT_ID}:${REGION}:${DB_INSTANCE_NAME} \
-  --set-env-vars="DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@/vibeflix?host=/cloudsql/${PROJECT_ID}:${REGION}:${DB_INSTANCE_NAME},RAW_VIDEOS_BUCKET=${RAW_BUCKET},PUBLIC_STREAMS_BUCKET=${PUBLIC_BUCKET},TRANSCODER_JOB_NAME=${JOB_NAME},GCP_PROJECT=${PROJECT_ID},GCP_LOCATION=${REGION},TRANSCODER_SECRET_TOKEN=${SECRET_TOKEN}"
+  --set-env-vars="DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@/vibetube?host=/cloudsql/${PROJECT_ID}:${REGION}:${DB_INSTANCE_NAME},RAW_VIDEOS_BUCKET=${RAW_BUCKET},PUBLIC_STREAMS_BUCKET=${PUBLIC_BUCKET},TRANSCODER_JOB_NAME=${JOB_NAME},GCP_PROJECT=${PROJECT_ID},GCP_LOCATION=${REGION},TRANSCODER_SECRET_TOKEN=${SECRET_TOKEN}"
 
 # Get dynamic backend URL
 BACKEND_URL=$(gcloud run services describe backend-service --region=${REGION} --format="value(status.url)")
@@ -142,6 +142,6 @@ FRONTEND_URL=$(gcloud run services describe frontend-service --region=${REGION} 
 
 echo "==============================================="
 echo "  Deployment completed successfully!          "
-echo "  Vibeflix Frontend: ${FRONTEND_URL}          "
-echo "  Vibeflix Backend:  ${BACKEND_URL}           "
+echo "  Vibetube Frontend: ${FRONTEND_URL}          "
+echo "  Vibetube Backend:  ${BACKEND_URL}           "
 echo "==============================================="

@@ -14,7 +14,7 @@ from database import init_db, get_db_conn, query_placeholder
 mimetypes.add_type("application/x-mpegURL", ".m3u8")
 mimetypes.add_type("video/MP2T", ".ts")
 
-app = FastAPI(title="Vibeflix API")
+app = FastAPI(title="Vibetube API")
 
 # Add CORS Middleware to support direct API hits or dev proxy bypass
 app.add_middleware(

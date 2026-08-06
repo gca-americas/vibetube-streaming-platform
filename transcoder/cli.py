@@ -35,7 +35,7 @@ from converter import (
 )
 def main(input_file, output_dir, format, resolution):
     """
-    Vibeflix Video Transcoder CLI
+    Vibetube Video Transcoder CLI
     
     Transcodes INPUT_FILE to HLS playlists/segments and/or MP4 format at multiple resolutions (480p, 720p, 1080p).
     """
@@ -66,7 +66,7 @@ def main(input_file, output_dir, format, resolution):
     
     # 4. Print transcoding summary
     click.secho("========================================", fg="blue", bold=True)
-    click.secho("  Vibeflix Video Transcoder Started", fg="blue", bold=True)
+    click.secho("  Vibetube Video Transcoder Started", fg="blue", bold=True)
     click.secho("========================================", fg="blue", bold=True)
     click.echo(f"Input Video:  {input_file_abs}")
     click.echo(f"Output Dir:   {output_dir}")

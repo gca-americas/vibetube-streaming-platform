@@ -151,7 +151,7 @@ export default function App() {
           <div className="flex items-center gap-2 mb-3">
             <Film className="w-8 h-8 text-vibe-red animate-pulse" />
             <h1 className="font-display text-4xl md:text-5xl tracking-tighter font-black bg-gradient-to-r from-vibe-red to-vibe-purple bg-clip-text text-transparent">
-              VIBEFLIX
+              VIBETUBE
             </h1>
           </div>
           <p className="text-sm md:text-base text-fg-muted font-medium max-w-md mb-8">
@@ -180,7 +180,7 @@ export default function App() {
               <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-4">
                 <Film className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-fg mb-1">Failed to connect to Vibeflix</h3>
+              <h3 className="text-lg font-bold text-fg mb-1">Failed to connect to Vibetube</h3>
               <p className="text-sm text-red-400 max-w-xs">{error}</p>
             </div>
           ) : filteredVideos.length > 0 ? (
@@ -211,7 +211,7 @@ export default function App() {
         {/* Minimal Footer */}
         <footer className="mt-20 py-6 border-t border-hairline flex flex-col md:flex-row items-center justify-between text-xs text-fg-muted gap-4">
           <p>
-            © {new Date().getFullYear()} Vibeflix Inc. Handcrafted with vibe-driven design.
+            © {new Date().getFullYear()} Vibetube Inc. Handcrafted with vibe-driven design.
           </p>
           <div className="flex gap-4">
             <span className="hover:text-fg cursor-pointer transition-colors duration-150">

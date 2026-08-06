@@ -1,4 +1,4 @@
-# Vibeflix Audit Trail
+# Vibetube Audit Trail
 
 ## Phase 1: Minimalist Search & Grid Main Page (2026-08-03)
 - **Initialized project framework**: Created standard React + TypeScript + Vite configurations (`package.json`, `tsconfig.json`, `vite.config.ts`, `index.html`).
@@ -26,7 +26,7 @@
 - **Verification**: Verified endpoint responses via cURL and compiled the frontend production build without errors.
 
 ## Phase 4: SQLite Database Integration (2026-08-03)
-- **Database Layer Transition**: Migrated backend data storage from direct file reads of `mockVideos.json` to a local SQLite database (`vibeflix.db`).
+- **Database Layer Transition**: Migrated backend data storage from direct file reads of `mockVideos.json` to a local SQLite database (`vibetube.db`).
 - **Database Code Modularization**: Created a separate `database.py` file to isolate database connections, table creation, and seed queries, importing them cleanly in `main.py`.
 - **Automated Seeding on Startup**: Implemented `init_db()` in `backend/database.py` to create the schema and seed the initial dataset on first boot.
 - **Dynamic SQL Querying**: Updated the `GET /api/videos` endpoint to query the SQLite table directly.

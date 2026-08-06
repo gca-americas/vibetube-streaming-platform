@@ -1,6 +1,6 @@
-# Vibeflix Video Streaming Platform
+# Vibetube Video Streaming Platform
 
-Vibeflix is a modern, unique, and fun video streaming platform. It features a cinematic neon/glow aesthetic and is built with React, Vite, TypeScript, and Tailwind CSS.
+Vibetube is a modern, unique, and fun video streaming platform. It features a cinematic neon/glow aesthetic and is built with React, Vite, TypeScript, and Tailwind CSS.
 
 ---
 

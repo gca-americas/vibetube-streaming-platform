@@ -3,7 +3,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 
-DATABASE_PATH = os.path.join(os.path.dirname(__file__), "vibeflix.db")
+DATABASE_PATH = os.path.join(os.path.dirname(__file__), "vibetube.db")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 @contextmanager
