@@ -1,0 +1,70 @@
+"""Event window logic.
+
+The upload window is enforced here and nowhere else. The frontend is told
+whether uploads are open so it can hide the button, but that is presentation
+only -- the client clock is neither trustworthy nor reliably correct, so
+POST /api/videos re-checks against the server clock on every request.
+"""
+
+from datetime import datetime, timezone
+
+def parse_iso(value):
+    """Parses a stored ISO-8601 timestamp into an aware UTC datetime.
+
+    Returns None for empty values. Naive timestamps are assumed to be UTC,
+    which matches what the admin CLI writes.
+    """
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+def upload_state(event: dict, now: datetime = None) -> dict:
+    """Resolves an event's upload window into a state the UI can render.
+
+    Either bound may be absent, meaning unbounded on that side. An event with
+    neither bound accepts uploads indefinitely.
+    """
+    now = now or datetime.now(timezone.utc)
+    opens_at = parse_iso(event.get("uploadOpensAt"))
+    closes_at = parse_iso(event.get("uploadClosesAt"))
+
+    if opens_at and now < opens_at:
+        return {
+            "uploadOpen": False,
+            "uploadState": "pending",
+            "reason": "Uploads for this showroom have not opened yet.",
+        }
+    if closes_at and now >= closes_at:
+        return {
+            "uploadOpen": False,
+            "uploadState": "closed",
+            "reason": "The upload window for this showroom has closed.",
+        }
+    return {
+        "uploadOpen": True,
+        "uploadState": "open",
+        "reason": None,
+    }
+
+def public_event(event: dict, now: datetime = None) -> dict:
+    """Shapes an event row for the API, with the window resolved server-side."""
+    state = upload_state(event, now)
+    return {
+        "code": event["code"],
+        "name": event["name"],
+        "uploadOpensAt": event.get("uploadOpensAt"),
+        "uploadClosesAt": event.get("uploadClosesAt"),
+        **state,
+    }

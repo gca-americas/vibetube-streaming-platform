@@ -1,34 +1,127 @@
-import React, { useState } from "react";
-import { X } from "lucide-react";
-import { getAuth } from "../services/firebase";
+import React, { useEffect, useState } from "react";
+import { X, User } from "lucide-react";
+import { uploadVideo } from "../lib/api";
+import { initialsOf } from "./VideoCard";
+
+// Mirrors MAX_UPLOAD_BYTES / MAX_IMAGE_BYTES in backend/main.py. Kept in sync
+// by hand: the server is the enforcing side, so drift here only affects when
+// the message appears, never whether the limit holds.
+const MAX_UPLOAD_MB = 50;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+const MAX_IMAGE_MB = 5;
+const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;
+
+const formatMb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+/** Seconds to a display runtime: M:SS, or H:MM:SS past an hour. */
+const formatDuration = (seconds: number): string => {
+  const total = Math.round(seconds);
+  if (!Number.isFinite(total) || total <= 0) return "";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return hours ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${minutes}:${pad(secs)}`;
+};
+
+/**
+ * Reads a video file's runtime in the browser, so nobody has to type it.
+ *
+ * Resolves to "" if the metadata cannot be read; the transcoder reports the
+ * authoritative duration on completion and overwrites whatever is stored, so
+ * a failure here only affects the few minutes before that callback arrives.
+ */
+const readVideoDuration = (file: File): Promise<string> =>
+  new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("video");
+    const done = (value: string) => {
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    probe.preload = "metadata";
+    probe.onloadedmetadata = () => done(formatDuration(probe.duration));
+    probe.onerror = () => done("");
+    // A file the browser cannot demux would otherwise never settle.
+    setTimeout(() => done(""), 5000);
+    probe.src = url;
+  });
+
+/** Object URL for a picked file, revoked when it changes or unmounts. */
+const usePreviewUrl = (file: File | null): string | null => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) {
+      setUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return url;
+};
 
 interface UploadModalProps {
+  eventCode: string;
   onClose: () => void;
   onUploadSuccess: () => void;
 }
 
-export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
+export const UploadModal = ({ eventCode, onClose, onUploadSuccess }: UploadModalProps) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [duration, setDuration] = useState("0:52");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  // Read from the file, never typed. Blank until the probe resolves.
+  const [duration, setDuration] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setVideoFile(e.target.files[0]);
-      // Auto-populate title if empty
-      if (!title) {
-        const baseName = e.target.files[0].name.replace(/\.[^/.]+$/, ""); // strip extension
-        setTitle(baseName);
-      }
+  // Object URLs must be revoked or each re-pick leaks one for the page's life.
+  const avatarPreview = usePreviewUrl(avatarFile);
+  const thumbnailPreview = usePreviewUrl(thumbnailFile);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setVideoFile(file);
+    setDuration("");
+    // Auto-populate title if empty
+    if (!title) {
+      setTitle(file.name.replace(/\.[^/.]+$/, "")); // strip extension
     }
+    setDuration(await readVideoDuration(file));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !videoFile) return;
+
+    // Courtesy check only -- the server enforces the same ceiling and is the
+    // authority. Catching it here saves the user uploading a file that is
+    // going to be rejected after the whole transfer.
+    if (videoFile.size > MAX_UPLOAD_BYTES) {
+      setError(
+        `That video is ${formatMb(videoFile.size)}. The limit is ${MAX_UPLOAD_MB} MB.`
+      );
+      return;
+    }
+
+    const oversizedImage = [
+      { file: avatarFile, label: "profile picture" },
+      { file: thumbnailFile, label: "thumbnail" },
+    ].find((entry) => entry.file && entry.file.size > MAX_IMAGE_BYTES);
+    if (oversizedImage?.file) {
+      setError(
+        `That ${oversizedImage.label} is ${formatMb(oversizedImage.file.size)}. ` +
+        `The limit is ${MAX_IMAGE_MB} MB.`
+      );
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -37,30 +130,18 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
     formData.append("title", title);
     formData.append("description", description);
     formData.append("duration", duration);
+    formData.append("displayName", displayName.trim() || "Anonymous Vibe");
+    formData.append("projectId", projectId.trim());
     formData.append("videoFile", videoFile);
+    // Omitted entirely when absent, so the server sees no field rather than
+    // an empty one it has to special-case.
+    if (avatarFile) formData.append("avatarFile", avatarFile);
+    if (thumbnailFile) formData.append("thumbnailFile", thumbnailFile);
 
     try {
-      const auth = getAuth();
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error("You must be logged in to upload videos.");
-      }
-      
-      const token = await user.getIdToken();
-
-      const res = await fetch("/api/videos", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        },
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || "Failed to upload video file");
-      }
-
+      // The server re-checks the upload window here; it can have closed
+      // between this modal opening and the file finishing its transfer.
+      await uploadVideo(eventCode, formData);
       onUploadSuccess();
       onClose();
     } catch (err: any) {
@@ -86,9 +167,12 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
           <X className="w-5 h-5" />
         </button>
 
-        <h2 className="text-xl font-bold mb-4 font-display bg-gradient-to-r from-vibe-red to-vibe-purple bg-clip-text text-transparent">
+        <h2 className="text-xl font-bold mb-1 font-display bg-gradient-to-r from-vibe-red to-vibe-purple bg-clip-text text-transparent">
           Publish a New Stream
         </h2>
+        <p className="text-xs text-fg-muted mb-4">
+          Posting to showroom <span className="font-bold tracking-wider">{eventCode}</span>
+        </p>
 
         {error && (
           <p className="text-xs text-red-500 mb-4 bg-red-500/10 p-3 rounded-lg border border-red-500/20">
@@ -98,7 +182,9 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Video File *</label>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">
+              Video File * <span className="text-fg-muted/60">— max {MAX_UPLOAD_MB} MB</span>
+            </label>
             <input
               required
               type="file"
@@ -120,6 +206,93 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
           </div>
 
           <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Your Name</label>
+            <input
+              placeholder="Shown on the card. Leave blank to stay anonymous."
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">
+              Project ID <span className="text-fg-muted/60">— optional</span>
+            </label>
+            <input
+              placeholder="e.g. team-rocket-01"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm font-mono text-fg focus:outline-none focus:border-vibe-purple transition-colors"
+            />
+            <p className="text-[10px] text-fg-muted/70">
+              Re-using an ID <span className="font-semibold text-fg-muted">replaces</span> that
+              project's video, keeping any link you already shared.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">
+              Profile Picture <span className="text-fg-muted/60">— optional, max {MAX_IMAGE_MB} MB</span>
+            </label>
+            <div className="flex items-center gap-3">
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt="Profile preview"
+                  className="w-11 h-11 rounded-full object-cover border border-hairline flex-shrink-0"
+                />
+              ) : (
+                // Mirrors exactly what the card will show if none is supplied.
+                <div className="w-11 h-11 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-red/25 to-vibe-purple/25 text-fg text-xs font-bold flex-shrink-0">
+                  {displayName.trim() ? initialsOf(displayName) : <User className="w-5 h-5 text-fg-muted" />}
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
+                className="flex-1 min-w-0 bg-input border border-hairline rounded-xl px-3 py-2 text-xs text-fg focus:outline-none focus:border-vibe-purple transition-colors cursor-pointer"
+              />
+            </div>
+            {!avatarFile && (
+              <p className="text-[10px] text-fg-muted/70">
+                Without one, your initials are shown instead.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">
+              Video Thumbnail <span className="text-fg-muted/60">— optional, max {MAX_IMAGE_MB} MB</span>
+            </label>
+            <div className="flex items-center gap-3">
+              {thumbnailPreview ? (
+                <img
+                  src={thumbnailPreview}
+                  alt="Thumbnail preview"
+                  className="w-20 h-11 rounded-lg object-cover border border-hairline flex-shrink-0"
+                />
+              ) : (
+                <div className="w-20 h-11 rounded-lg border border-hairline bg-stage flex items-center justify-center text-[9px] text-fg-muted flex-shrink-0">
+                  auto
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setThumbnailFile(e.target.files?.[0] ?? null)}
+                className="flex-1 min-w-0 bg-input border border-hairline rounded-xl px-3 py-2 text-xs text-fg focus:outline-none focus:border-vibe-purple transition-colors cursor-pointer"
+              />
+            </div>
+            {!thumbnailFile && (
+              <p className="text-[10px] text-fg-muted/70">
+                Without one, a frame from the middle of your video is used.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Description</label>
             <textarea
               placeholder="Tell your viewers about the vibe..."
@@ -129,15 +302,13 @@ export const UploadModal = ({ onClose, onUploadSuccess }: UploadModalProps) => {
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">Duration</label>
-            <input
-              placeholder="e.g. 15:40"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              className="bg-input border border-hairline rounded-xl px-4 py-2.5 text-sm text-fg focus:outline-none focus:border-vibe-purple transition-colors"
-            />
-          </div>
+          {/* Duration is read from the file, not asked for. Shown only as
+              confirmation that it was detected. */}
+          {videoFile && duration && (
+            <p className="text-[10px] text-fg-muted/70 -mt-1">
+              Runtime detected: <span className="font-mono text-fg-muted">{duration}</span>
+            </p>
+          )}
 
           <button
             type="submit"

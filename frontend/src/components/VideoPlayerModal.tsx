@@ -1,24 +1,39 @@
-import { X, User } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { Video } from "./VideoCard";
+import { X, AlertTriangle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Video, initialsOf } from "./VideoCard";
+import { ShareButtons } from "./ShareButtons";
+import { formatUploadTime } from "../lib/api";
+import { videoShareUrl } from "../lib/router";
 
 interface VideoPlayerModalProps {
   video: Video;
+  /** Showroom the video belongs to, needed to build its shareable link. */
+  eventCode: string;
   onClose: () => void;
 }
 
 export const VideoPlayerModal = ({
   video,
+  eventCode,
   onClose
 }: VideoPlayerModalProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [playbackFailed, setPlaybackFailed] = useState(false);
 
-  // Load and play the video when the video or source changes
+  // Keyed on the source rather than the whole video object: the object
+  // identity changes on every poll-driven refresh, which would otherwise
+  // re-run load() and restart playback for no reason.
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
+    setPlaybackFailed(false);
     let hlsInstance: any = null;
+
+    // An undecodable file otherwise leaves a silent black rectangle with no
+    // indication anything went wrong.
+    const onError = () => setPlaybackFailed(true);
+    videoElement.addEventListener("error", onError);
 
     if (video.videoUrl.endsWith(".m3u8")) {
       const Hls = (window as any).Hls;
@@ -26,6 +41,11 @@ export const VideoPlayerModal = ({
         hlsInstance = new Hls();
         hlsInstance.loadSource(video.videoUrl);
         hlsInstance.attachMedia(videoElement);
+        // hls.js swallows media errors internally, so the element's own error
+        // event never fires for a broken stream.
+        hlsInstance.on(Hls.Events.ERROR, (_e: any, data: any) => {
+          if (data?.fatal) setPlaybackFailed(true);
+        });
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
           videoElement.play().catch((err) => {
             console.log("Auto-play was prevented by browser policies:", err);
@@ -49,11 +69,12 @@ export const VideoPlayerModal = ({
     }
 
     return () => {
+      videoElement.removeEventListener("error", onError);
       if (hlsInstance) {
         hlsInstance.destroy();
       }
     };
-  }, [video]);
+  }, [video.videoUrl]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -88,6 +109,19 @@ export const VideoPlayerModal = ({
               autoPlay
               className="absolute inset-0 w-full h-full object-contain"
             />
+
+            {playbackFailed && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 px-6 text-center">
+                <AlertTriangle className="w-9 h-9 text-amber-400" />
+                <p className="text-sm font-bold text-white">
+                  This video can't be played
+                </p>
+                <p className="text-xs text-white/60 max-w-sm">
+                  The file is missing or is not in a format your browser can
+                  decode. Uploading it again usually fixes it.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Video Metadata */}
@@ -96,11 +130,19 @@ export const VideoPlayerModal = ({
               {video.title}
             </h2>
 
-            {/* Video Stats */}
-            <div className="flex items-center text-xs text-fg-muted mb-6 font-medium gap-2">
-              <span>{video.views.toLocaleString()} views</span>
-              <span className="w-1 h-1 bg-fg-muted/40 rounded-full"></span>
-              <span>Published {video.uploadedAt}</span>
+            <span className="text-xs text-fg-muted font-medium">
+              Uploaded {formatUploadTime(video.createdAt)}
+            </span>
+
+            {/* Its own row: sharing competed with the timestamp for attention
+                when both sat on one line. */}
+            <div className="mt-4 mb-6 p-3 rounded-2xl bg-overlay border border-hairline">
+              <ShareButtons
+                url={videoShareUrl(eventCode, video.id)}
+                title={video.title}
+                authorName={video.channelName}
+                seed={video.id}
+              />
             </div>
 
             <hr className="border-hairline mb-6" />
@@ -114,17 +156,22 @@ export const VideoPlayerModal = ({
                   className="w-12 h-12 rounded-full object-cover border border-hairline"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-full bg-stage border border-hairline flex items-center justify-center text-fg-muted shrink-0">
-                  <User className="w-6 h-6" />
+                <div
+                  className="w-12 h-12 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-red/25 to-vibe-purple/25 text-fg text-sm font-bold shrink-0 select-none"
+                  title={video.channelName}
+                >
+                  {initialsOf(video.channelName)}
                 </div>
               )}
               <div className="min-w-0 flex-1">
                 <h4 className="font-bold text-fg text-sm mb-1">
                   {video.channelName}
                 </h4>
-                <p className="text-xs text-fg-muted font-medium">
-                  {video.channelName} Creator Network
-                </p>
+                {video.projectId && (
+                  <p className="text-xs text-fg-muted font-medium font-mono">
+                    Project {video.projectId}
+                  </p>
+                )}
                 
                 {/* Description */}
                 <p className="text-sm text-fg/90 mt-4 leading-relaxed whitespace-pre-line bg-overlay p-4 rounded-xl border border-hairline">

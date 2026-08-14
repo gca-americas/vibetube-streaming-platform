@@ -6,8 +6,6 @@
     "thumbnailUrl": "/images/thumbnails/v1.jpg",
     "videoUrl": "https://media.w3.org/2010/05/sintel/trailer_hd.mp4",
     "duration": "1:24:05",
-    "views": 342900,
-    "uploadedAt": "2 days ago",
     "channelName": "SynthHorizon",
     "channelAvatar": "/images/avatars/v1.jpg"
   },
@@ -18,8 +16,6 @@
     "thumbnailUrl": "/images/thumbnails/v2.jpg",
     "videoUrl": "https://www.w3schools.com/html/movie.mp4",
     "duration": "48:12",
-    "views": 89400,
-    "uploadedAt": "1 week ago",
     "channelName": "LowLevelWizard",
     "channelAvatar": "/images/avatars/v2.jpg"
   },
@@ -30,8 +26,6 @@
     "thumbnailUrl": "/images/thumbnails/v3.jpg",
     "videoUrl": "https://media.w3.org/2010/05/bunny/trailer.mp4",
     "duration": "22:15",
-    "views": 1205300,
-    "uploadedAt": "3 days ago",
     "channelName": "TokyoDrifter",
     "channelAvatar": "/images/avatars/v3.jpg"
   },
@@ -42,8 +36,6 @@
     "thumbnailUrl": "/images/thumbnails/v4.jpg",
     "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
     "duration": "15:40",
-    "views": 45300,
-    "uploadedAt": "5 days ago",
     "channelName": "ClickyClack",
     "channelAvatar": "/images/avatars/v4.jpg"
   },
@@ -54,8 +46,6 @@
     "thumbnailUrl": "/images/thumbnails/v5.jpg",
     "videoUrl": "https://media.w3.org/2010/05/sintel/trailer_hd.mp4",
     "duration": "10:02",
-    "views": 612800,
-    "uploadedAt": "2 weeks ago",
     "channelName": "EscapeColonQ",
     "channelAvatar": "/images/avatars/v5.jpg"
   },
@@ -66,8 +56,6 @@
     "thumbnailUrl": "/images/thumbnails/v6.jpg",
     "videoUrl": "https://www.w3schools.com/html/movie.mp4",
     "duration": "3:00:00",
-    "views": 2510900,
-    "uploadedAt": "1 month ago",
     "channelName": "StellarVibes",
     "channelAvatar": "/images/avatars/v6.jpg"
   },
@@ -78,8 +66,6 @@
     "thumbnailUrl": "/images/thumbnails/v7.jpg",
     "videoUrl": "https://media.w3.org/2010/05/bunny/trailer.mp4",
     "duration": "18:25",
-    "views": 32900,
-    "uploadedAt": "4 days ago",
     "channelName": "PixelPerfect",
     "channelAvatar": "/images/avatars/v7.jpg"
   },
@@ -90,8 +76,6 @@
     "thumbnailUrl": "/images/thumbnails/v8.jpg",
     "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
     "duration": "34:10",
-    "views": 75200,
-    "uploadedAt": "3 weeks ago",
     "channelName": "WaveformLab",
     "channelAvatar": "/images/avatars/v8.jpg"
   }

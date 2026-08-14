@@ -1,0 +1,45 @@
+# Build context for the root Dockerfile. Everything here is either rebuilt
+# inside the image, machine-specific, or has no business in a shipped layer.
+#
+# frontend/public/ IS needed: the logo and seed thumbnails are served from it.
+
+# Rebuilt during the image build
+**/node_modules
+**/dist
+**/venv
+**/.venv
+**/__pycache__
+**/*.pyc
+backend/static
+
+# Local runtime state
+**/*.db
+backend/uploads
+
+# Secrets. The .example files are documentation and may stay.
+.env
+.env.*
+!.env.example
+!**/.env.example
+backend/.env
+frontend/.env
+
+# Repository metadata and docs
+.git
+.gitignore
+.dockerignore
+.gcloudignore
+*.md
+
+# Local assistant/editor tooling
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+.aider*
+.continue/
+.windsurfrules
+.codeium/
+.vscode/
+.idea/
+.DS_Store

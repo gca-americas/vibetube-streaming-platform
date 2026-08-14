@@ -1,0 +1,136 @@
+import { Video } from "../components/VideoCard";
+
+export interface VibeEvent {
+  code: string;
+  name: string;
+  uploadOpensAt: string | null;
+  uploadClosesAt: string | null;
+  /** Resolved by the server -- never computed from the browser clock. */
+  uploadOpen: boolean;
+  uploadState: "open" | "pending" | "closed";
+  reason: string | null;
+}
+
+/** Thrown when an event code does not resolve, so the caller can show No Showroom. */
+export class EventNotFoundError extends Error {}
+
+/** Thrown when a showroom is at its concurrent-viewer capacity. */
+export class ShowroomFullError extends Error {}
+
+const CLIENT_ID_KEY = "vibetube:clientId";
+
+/**
+ * A stable per-browser id, so one viewer refreshing or opening the player does
+ * not consume extra seats. Falls back to a per-session value when storage is
+ * unavailable (private browsing), which merely counts that viewer again on a
+ * hard reload rather than breaking entry.
+ */
+let memoryClientId: string | null = null;
+
+export const getClientId = (): string => {
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    localStorage.setItem(CLIENT_ID_KEY, created);
+    return created;
+  } catch {
+    if (!memoryClientId) memoryClientId = crypto.randomUUID();
+    return memoryClientId;
+  }
+};
+
+export interface PresenceState {
+  present: number;
+  capacity: number;
+}
+
+/** Claims or renews a seat in a showroom. Throws ShowroomFullError at capacity. */
+export const sendPresence = async (code: string): Promise<PresenceState> => {
+  const res = await fetch(`/api/events/${encodeURIComponent(code)}/presence`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId: getClientId() }),
+  });
+  if (res.status === 404) {
+    throw new EventNotFoundError(await detailOf(res, "No showroom found."));
+  }
+  if (res.status === 503) {
+    throw new ShowroomFullError(await detailOf(res, "This showroom is full."));
+  }
+  if (!res.ok) throw new Error(await detailOf(res, "Could not join the showroom."));
+  return res.json();
+};
+
+const detailOf = async (res: Response, fallback: string) => {
+  const body = await res.json().catch(() => ({}));
+  return body.detail || fallback;
+};
+
+export const fetchEvent = async (code: string): Promise<VibeEvent> => {
+  const res = await fetch(`/api/events/${encodeURIComponent(code)}`);
+  if (res.status === 404) {
+    throw new EventNotFoundError(await detailOf(res, "No showroom found."));
+  }
+  if (!res.ok) {
+    throw new Error(await detailOf(res, "Failed to load this showroom."));
+  }
+  return res.json();
+};
+
+export const fetchEventVideos = async (code: string): Promise<Video[]> => {
+  const res = await fetch(`/api/events/${encodeURIComponent(code)}/videos`);
+  if (res.status === 404) {
+    throw new EventNotFoundError(await detailOf(res, "No showroom found."));
+  }
+  if (!res.ok) {
+    throw new Error(await detailOf(res, "Failed to load videos."));
+  }
+  return res.json();
+};
+
+export const uploadVideo = async (code: string, formData: FormData): Promise<void> => {
+  const res = await fetch(`/api/events/${encodeURIComponent(code)}/videos`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    // A 403 here is the upload window having closed since the page loaded.
+    throw new Error(await detailOf(res, "Failed to upload video."));
+  }
+};
+
+/** Formats a stored UTC timestamp in the viewer's local timezone. */
+/**
+ * Absolute upload time, rendered in the viewer's own timezone.
+ *
+ * Timestamps are stored as ISO-8601 with an explicit +00:00 offset, so Date
+ * parses them as UTC rather than as local wall-clock time. The year only
+ * appears when it is not the current one, which keeps the common case short.
+ */
+export const formatUploadTime = (iso?: string | null): string => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const thisYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(thisYear ? {} : { year: "numeric" }),
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+export const formatWindowTime = (iso: string | null): string => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+};

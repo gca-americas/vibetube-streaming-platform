@@ -78,8 +78,8 @@ A deployment orchestration script is provided in [deploy.sh](file:///Users/ljhen
 	*   `gs://vibetube-sandbox-raw-videos`: Private storage bucket for original video files.
 	*   `gs://vibetube-sandbox-public-streams`: Publicly readable bucket (`allUsers` has `roles/storage.objectViewer` permission) with custom CORS configs enabling Cross-Origin media streaming.
 3.  **Cloud SQL PostgreSQL Instance**:
-	*   Provisioned as `vibetube-db-instance` running PostgreSQL 15 on a cost-efficient `db-f1-micro` machine.
-	*   Creates a `vibetube` database with the password `vibe_password_123`.
+    *   Provisioned as `vibeflix-db-instance` running PostgreSQL 15 on a cost-efficient `db-f1-micro` machine.
+    *   Creates the application database. Credentials now live in `.env` (gitignored), not in `deploy.sh`.
 4.  **Artifact Registry**:
 	*   Docker repository named `vibetube-streaming-platform` storing images for all three services.
 5.  **Cloud Run Services / Jobs**:
@@ -101,7 +101,7 @@ Here are the highest priority items that remain to be completed:
 3.  **Database Migration Management**:
 	*   Introduce a migration management framework (such as `Alembic` for SQLAlechemy/Python) instead of relying on custom raw SQL updates inside [database.py](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/backend/database.py).
 4.  **Security & IAM Hardening**:
-	*   Transition Cloud Run service configurations in `deploy.sh` to use dedicated Service Accounts with least-privilege policies rather than default project compute accounts.
-	*   Move hardcoded passwords/tokens (e.g. `vibe_password_123`, `vibe_secret_123`) from variables in the script to GCP Secret Manager.
+    *   Transition Cloud Run service configurations in `deploy.sh` to use dedicated Service Accounts with least-privilege policies rather than default project compute accounts.
+    *   Move the credentials in `.env` to GCP Secret Manager. They are no longer hardcoded in `deploy.sh`, but `.env` is still plaintext on disk.
 5.  **Robust Transcoding Queue**:
 	*   Currently, calling a Cloud Run Job directly on upload is synchronous. For high traffic, implement a messaging/queue service (e.g., Pub/Sub or Celery) where uploads post a message and transcoder workers consume tasks asynchronously.
