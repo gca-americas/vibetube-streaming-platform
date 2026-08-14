@@ -16,7 +16,7 @@ For the initial phase, the application consists purely of a modern, dark-mode si
 
 ### 2. File & Component Structure
 ```
-vibeflix-streaming-platform/
+vibetube-streaming-platform/
 ├── ARCHITECTURE.md          # Architectural plan and current design touchpoint
 ├── AUDIT_TRAIL.md           # Log of phases and design decisions
 ├── package.json             # NPM package configuration

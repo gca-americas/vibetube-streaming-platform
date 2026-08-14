@@ -32,7 +32,7 @@ The project consists of three main decoupled services:
                           ▼                 ▼
                   ┌───────────────┐     ┌────────────────────────┐
                   │FastAPI Backend│     │      GCS Bucket        │
-                  │  (Cloud Run   │     │vibeflix-sandbox-public-│
+                  │  (Cloud Run   │     │vibetube-sandbox-public-│
                   │   Service)    │     │        streams         │
                   └──────┬──────┬─┘     └───────────▲────────────┘
                          │      │                   │
@@ -47,45 +47,45 @@ The project consists of three main decoupled services:
                                         ▼ Raw Upload
                                ┌────────────────────────┐
                                │       GCS Bucket       │
-                               │vibeflix-sandbox-raw-   │
+                               │vibetube-sandbox-raw-   │
                                │         videos         │
                                └────────────────────────┘
 ```
 
 ### Component Details
-*   **Frontend ([/frontend](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/frontend))**:
+*   **Frontend ([/frontend](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/frontend))**:
     *   **Tech Stack**: React 18, Vite, TypeScript, Tailwind CSS v4.
     *   **Features**: Dark mode/light mode themes, responsive grid, dynamic play-on-hover video cards, HLS-ready media player, upload modal, and authentication forms.
-    *   **Auth**: Integrates with [firebase.ts](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/frontend/src/services/firebase.ts). In local environments, if Firebase keys are absent, it shifts to `MockAuth` where entering any email signs you in (with mock tokens like `mock-token-emailprefix`).
-*   **Backend ([/backend](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/backend))**:
+    *   **Auth**: Integrates with [firebase.ts](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/frontend/src/services/firebase.ts). In local environments, if Firebase keys are absent, it shifts to `MockAuth` where entering any email signs you in (with mock tokens like `mock-token-emailprefix`).
+*   **Backend ([/backend](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/backend))**:
     *   **Tech Stack**: FastAPI, Uvicorn, SQLite (local) / PostgreSQL (production via `psycopg2`).
-    *   **Database Management**: Defined in [database.py](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/backend/database.py). Connects dynamically based on `DATABASE_URL` env variable. Automatically performs migrations (adding `userId`) and populates seed data on startup.
-    *   **Auth Validation**: Handled in [auth.py](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/backend/auth.py). Performs manual RS256 token verification, downloading public signing keys directly from Google. Validates custom `mock-token-` headers for local development.
+    *   **Database Management**: Defined in [database.py](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/backend/database.py). Connects dynamically based on `DATABASE_URL` env variable. Automatically performs migrations (adding `userId`) and populates seed data on startup.
+    *   **Auth Validation**: Handled in [auth.py](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/backend/auth.py). Performs manual RS256 token verification, downloading public signing keys directly from Google. Validates custom `mock-token-` headers for local development.
     *   **Transcoder Triggers**: In production, raw uploads are saved to GCS. The backend then invokes GCP Cloud Run Job client library to launch the transcoder with container overrides (source paths, destination paths, tokens).
-*   **Transcoder ([/transcoder](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/transcoder))**:
+*   **Transcoder ([/transcoder](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/transcoder))**:
     *   **Tech Stack**: Python (using `google-cloud-storage`, `requests`, and `click`), FFmpeg system library.
-    *   **Execution Flow**: Defined in [job.py](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/transcoder/job.py) and [converter.py](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/transcoder/converter.py). Downloads the raw video from GCS, transcodes it into HLS streams of 480p, 720p, and 1080p, outputs a unified `master.m3u8` playlist, extracts a JPEG thumbnail at the video's midpoint, uploads the outputs back to the public GCS bucket, and sends a secure POST request to the backend callback endpoint with an `X-Transcoder-Token`.
+    *   **Execution Flow**: Defined in [job.py](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/transcoder/job.py) and [converter.py](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/transcoder/converter.py). Downloads the raw video from GCS, transcodes it into HLS streams of 480p, 720p, and 1080p, outputs a unified `master.m3u8` playlist, extracts a JPEG thumbnail at the video's midpoint, uploads the outputs back to the public GCS bucket, and sends a secure POST request to the backend callback endpoint with an `X-Transcoder-Token`.
 
 ---
 
 ## 3. Google Cloud Platform (GCP) Deployment
 
-A deployment orchestration script is provided in [deploy.sh](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/deploy.sh). Running it provisions the infrastructure and deploys the services automatically.
+A deployment orchestration script is provided in [deploy.sh](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/deploy.sh). Running it provisions the infrastructure and deploys the services automatically.
 
 ### Infrastructural Resources Configured:
-1.  **GCP Project Context**: Targeted to Project `vibeflix-sandbox` in region `us-central1`.
+1.  **GCP Project Context**: Targeted to Project `vibetube-sandbox` in region `us-central1`.
 2.  **Storage (GCS)**:
-    *   `gs://vibeflix-sandbox-raw-videos`: Private storage bucket for original video files.
-    *   `gs://vibeflix-sandbox-public-streams`: Publicly readable bucket (`allUsers` has `roles/storage.objectViewer` permission) with custom CORS configs enabling Cross-Origin media streaming.
+	*   `gs://vibetube-sandbox-raw-videos`: Private storage bucket for original video files.
+	*   `gs://vibetube-sandbox-public-streams`: Publicly readable bucket (`allUsers` has `roles/storage.objectViewer` permission) with custom CORS configs enabling Cross-Origin media streaming.
 3.  **Cloud SQL PostgreSQL Instance**:
     *   Provisioned as `vibeflix-db-instance` running PostgreSQL 15 on a cost-efficient `db-f1-micro` machine.
     *   Creates the application database. Credentials now live in `.env` (gitignored), not in `deploy.sh`.
 4.  **Artifact Registry**:
-    *   Docker repository named `vibeflix-streaming-platform` storing images for all three services.
+	*   Docker repository named `vibetube-streaming-platform` storing images for all three services.
 5.  **Cloud Run Services / Jobs**:
-    *   `backend-service` (Cloud Run Service): Auto-connected to Cloud SQL using Unix sockets, set with the required database URL, bucket names, and transcoder secrets.
-    *   `frontend-service` (Cloud Run Service): Hosts the built frontend served by Nginx. The Nginx configuration templates translate `BACKEND_URL` on container start to route `/api` requests correctly.
-    *   `transcoder-job` (Cloud Run Job): Built from `/transcoder`. Initiated on-demand via the backend's GCP client library.
+	*   `backend-service` (Cloud Run Service): Auto-connected to Cloud SQL using Unix sockets, set with the required database URL, bucket names, and transcoder secrets.
+	*   `frontend-service` (Cloud Run Service): Hosts the built frontend served by Nginx. The Nginx configuration templates translate `BACKEND_URL` on container start to route `/api` requests correctly.
+	*   `transcoder-job` (Cloud Run Job): Built from `/transcoder`. Initiated on-demand via the backend's GCP client library.
 
 ---
 
@@ -94,14 +94,14 @@ A deployment orchestration script is provided in [deploy.sh](file:///Users/ljhen
 Here are the highest priority items that remain to be completed:
 
 1.  **Firebase Production Configuration**:
-    *   Provide real Firebase credentials in the frontend config or secrets vault.
-    *   Configure `FIREBASE_PROJECT_ID` on the backend deployment so it verifies real JWT tokens instead of mock tokens in production.
+	*   Provide real Firebase credentials in the frontend config or secrets vault.
+	*   Configure `FIREBASE_PROJECT_ID` on the backend deployment so it verifies real JWT tokens instead of mock tokens in production.
 2.  **CI/CD Pipeline Setup**:
-    *   Automate deployment. Convert [deploy.sh](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/deploy.sh) tasks into a GitHub Actions workflow or a Google Cloud Build trigger.
+	*   Automate deployment. Convert [deploy.sh](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/deploy.sh) tasks into a GitHub Actions workflow or a Google Cloud Build trigger.
 3.  **Database Migration Management**:
-    *   Introduce a migration management framework (such as `Alembic` for SQLAlechemy/Python) instead of relying on custom raw SQL updates inside [database.py](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/backend/database.py).
+	*   Introduce a migration management framework (such as `Alembic` for SQLAlechemy/Python) instead of relying on custom raw SQL updates inside [database.py](file:///Users/ljhenne/Git/github.com/gca-americas/vibetube-streaming-platform/backend/database.py).
 4.  **Security & IAM Hardening**:
     *   Transition Cloud Run service configurations in `deploy.sh` to use dedicated Service Accounts with least-privilege policies rather than default project compute accounts.
     *   Move the credentials in `.env` to GCP Secret Manager. They are no longer hardcoded in `deploy.sh`, but `.env` is still plaintext on disk.
 5.  **Robust Transcoding Queue**:
-    *   Currently, calling a Cloud Run Job directly on upload is synchronous. For high traffic, implement a messaging/queue service (e.g., Pub/Sub or Celery) where uploads post a message and transcoder workers consume tasks asynchronously.
+	*   Currently, calling a Cloud Run Job directly on upload is synchronous. For high traffic, implement a messaging/queue service (e.g., Pub/Sub or Celery) where uploads post a message and transcoder workers consume tasks asynchronously.
