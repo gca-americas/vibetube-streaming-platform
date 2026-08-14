@@ -2,7 +2,26 @@ import os
 import sys
 import requests
 from google.cloud import storage
-from converter import transcode_to_hls, generate_master_playlist, extract_thumbnail
+from converter import (
+    transcode_to_hls, generate_master_playlist, extract_thumbnail,
+    get_video_duration,
+)
+
+
+def format_duration(seconds: float) -> str:
+    """Seconds to a display runtime: M:SS, or H:MM:SS past an hour.
+
+    Returns an empty string for a non-positive duration, so a failed probe
+    leaves the existing value alone rather than overwriting it with 0:00.
+    """
+    total = int(round(seconds or 0))
+    if total <= 0:
+        return ""
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
 
 def parse_gcs_uri(gcs_uri: str):
     if not gcs_uri.startswith("gs://"):
@@ -40,17 +59,43 @@ def upload_folder_to_gcs(local_dir: str, bucket_name: str, gcs_prefix: str):
             else:
                 blob.upload_from_filename(local_file_path)
 
+def report_failure(reason: str):
+    """Tells the backend this job died so the video stops showing as processing.
+
+    Best effort: if the callback itself fails there is nothing further to do,
+    and raising here would only mask the original error.
+    """
+    backend_url = os.getenv("BACKEND_URL")
+    video_id = os.getenv("VIDEO_ID")
+    secret_token = os.getenv("TRANSCODER_SECRET_TOKEN")
+
+    print(f"Transcode failed: {reason}")
+    if not backend_url or not video_id:
+        return
+
+    headers = {"X-Transcoder-Token": secret_token} if secret_token else {}
+    callback_url = f"{backend_url.rstrip('/')}/api/videos/{video_id}/transcode-failed"
+    try:
+        requests.post(callback_url, json={"error": reason}, headers=headers, timeout=30)
+        print("Reported failure to backend.")
+    except Exception as e:
+        print(f"Could not report failure to backend: {e}")
+
+def fail(reason: str):
+    report_failure(reason)
+    sys.exit(1)
+
 def main():
     input_uri = os.getenv("INPUT_GCS_URI")
     output_dir_uri = os.getenv("OUTPUT_GCS_DIR")
     video_id = os.getenv("VIDEO_ID")
     backend_url = os.getenv("BACKEND_URL")
     secret_token = os.getenv("TRANSCODER_SECRET_TOKEN")
-    
+
     if not input_uri or not output_dir_uri or not video_id:
         print("Missing required environment variables (INPUT_GCS_URI, OUTPUT_GCS_DIR, VIDEO_ID)")
         sys.exit(1)
-        
+
     print(f"Starting transcode job for Video {video_id}")
     print(f"Input URI: {input_uri}")
     print(f"Output URI: {output_dir_uri}")
@@ -66,8 +111,7 @@ def main():
         blob.download_to_filename(local_input)
         print("Raw video downloaded successfully.")
     except Exception as e:
-        print(f"Error downloading video: {e}")
-        sys.exit(1)
+        fail(f"Error downloading video: {e}")
         
     # 2. Run transcoding locally in container
     local_output_dir = "/tmp/transcoded"
@@ -85,16 +129,14 @@ def main():
             print(f"Failed processing resolution {res}: {e}")
             
     if not success_resolutions:
-        print("All resolutions failed. Exiting.")
-        sys.exit(1)
+        fail("All resolutions failed.")
         
     # Generate master playlist
     try:
         generate_master_playlist(local_output_dir, success_resolutions)
         print("Master playlist generated.")
     except Exception as e:
-        print(f"Failed to generate master playlist: {e}")
-        sys.exit(1)
+        fail(f"Failed to generate master playlist: {e}")
         
     # Extract thumbnail (using mid-point calculation built inside converter.py)
     try:
@@ -102,8 +144,7 @@ def main():
         extract_thumbnail(local_input, local_output_dir)
         print("Thumbnail extracted.")
     except Exception as e:
-        print(f"Failed to extract thumbnail: {e}")
-        sys.exit(1)
+        fail(f"Failed to extract thumbnail: {e}")
         
     # 3. Upload outputs back to GCS
     try:
@@ -111,8 +152,7 @@ def main():
         upload_folder_to_gcs(local_output_dir, out_bucket, out_prefix)
         print("Transcoded files uploaded to GCS successfully.")
     except Exception as e:
-        print(f"Failed to upload output to GCS: {e}")
-        sys.exit(1)
+        fail(f"Failed to upload output to GCS: {e}")
         
     # 4. Notify backend
     if backend_url:
@@ -127,7 +167,11 @@ def main():
             
         payload = {
             "videoUrl": video_url,
-            "thumbnailUrl": thumbnail_url
+            "thumbnailUrl": thumbnail_url,
+            # ffprobe already read this to place the thumbnail; reporting it
+            # means nobody has to type a runtime by hand, and the value shown
+            # is the file's own rather than whatever a form was told.
+            "duration": format_duration(get_video_duration(local_input)),
         }
         
         try:

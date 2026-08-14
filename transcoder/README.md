@@ -1,4 +1,4 @@
-# Vibeflix Video Transcoder CLI
+# Vibetube Video Transcoder CLI
 
 A Python Click CLI application to transcode video files into streaming-friendly formats (HLS and MP4) at multiple resolutions (480p, 720p, 1080p).
 

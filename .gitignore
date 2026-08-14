@@ -41,3 +41,26 @@ lerna-debug.log*
 *.mov
 *_transcoded/
 
+# Environment files. Only the .example variants belong in the repo.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Local assistant/editor tooling. Kept out of the repository so the history
+# reflects the project rather than whatever was used to work on it, and so
+# machine-specific paths in those config files never reach a shared branch.
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+.cursorignore
+.aider*
+.continue/
+.windsurfrules
+.github/copilot-instructions.md
+.codeium/
+.sourcegraph/
+*.ai-session
+.specstory/
+

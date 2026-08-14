@@ -1,16 +1,16 @@
-# Vibeflix Catch-Up & Hand-Off Guide
+# Vibetube Catch-Up & Hand-Off Guide
 
-Welcome to **Vibeflix**! This document summarizes the project's development history, current architecture, Google Cloud Platform (GCP) deployment status, and the immediate next steps to transition development smoothly.
+Welcome to **Vibetube**! This document summarizes the project's development history, current architecture, Google Cloud Platform (GCP) deployment status, and the immediate next steps to transition development smoothly.
 
 ---
 
 ## 1. Overview of Completed Work
 
-Vibeflix has been built in eight incremental phases:
+Vibetube has been built in eight incremental phases:
 1. **Phase 1: Minimalist Search & Grid Main Page**: Built the React, Vite, TypeScript, and Tailwind CSS v4 frontend skeleton with mock data.
 2. **Phase 2: Video Player Integration**: Added a custom glassmorphism modal player utilizing high-availability public domain video streams.
 3. **Phase 3: Backend Decoupling**: Restructured the app into discrete `/frontend` and `/backend` packages, introducing a Python FastAPI server.
-4. **Phase 4: SQLite Database**: Migrated backend data storage from JSON files to a local SQLite database (`vibeflix.db`).
+4. **Phase 4: SQLite Database**: Migrated backend data storage from JSON files to a local SQLite database (`vibetube.db`).
 5. **Phase 5 & 6: Video & Binary Uploads**: Supported user video uploads, routing binary files to `/uploads` locally and mounting static file serving in FastAPI.
 6. **Phase 7: Transcoding & HLS Streaming**: Developed a Python-based transcoder using `ffmpeg` to generate adaptive bitrate HLS formats (480p, 720p, 1080p, `master.m3u8`) and wired up client playback using `hls.js` with Safari fallbacks.
 7. **Phase 8: Firebase Authentication**: Configured CDN-based Firebase Auth with a dual mode—automatic offline `MockAuth` simulation for seamless local development, and RS256 JWT validation on the backend verifying signature keys against Google's certificates.
@@ -79,7 +79,7 @@ A deployment orchestration script is provided in [deploy.sh](file:///Users/ljhen
     *   `gs://vibeflix-sandbox-public-streams`: Publicly readable bucket (`allUsers` has `roles/storage.objectViewer` permission) with custom CORS configs enabling Cross-Origin media streaming.
 3.  **Cloud SQL PostgreSQL Instance**:
     *   Provisioned as `vibeflix-db-instance` running PostgreSQL 15 on a cost-efficient `db-f1-micro` machine.
-    *   Creates a `vibeflix` database with the password `vibe_password_123`.
+    *   Creates the application database. Credentials now live in `.env` (gitignored), not in `deploy.sh`.
 4.  **Artifact Registry**:
     *   Docker repository named `vibeflix-streaming-platform` storing images for all three services.
 5.  **Cloud Run Services / Jobs**:
@@ -102,6 +102,6 @@ Here are the highest priority items that remain to be completed:
     *   Introduce a migration management framework (such as `Alembic` for SQLAlechemy/Python) instead of relying on custom raw SQL updates inside [database.py](file:///Users/ljhenne/Git/github.com/ljhenne/vibeflix-streaming-platform/backend/database.py).
 4.  **Security & IAM Hardening**:
     *   Transition Cloud Run service configurations in `deploy.sh` to use dedicated Service Accounts with least-privilege policies rather than default project compute accounts.
-    *   Move hardcoded passwords/tokens (e.g. `vibe_password_123`, `vibe_secret_123`) from variables in the script to GCP Secret Manager.
+    *   Move the credentials in `.env` to GCP Secret Manager. They are no longer hardcoded in `deploy.sh`, but `.env` is still plaintext on disk.
 5.  **Robust Transcoding Queue**:
     *   Currently, calling a Cloud Run Job directly on upload is synchronous. For high traffic, implement a messaging/queue service (e.g., Pub/Sub or Celery) where uploads post a message and transcoder workers consume tasks asynchronously.

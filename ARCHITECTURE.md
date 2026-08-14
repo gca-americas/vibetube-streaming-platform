@@ -1,6 +1,6 @@
-# Vibeflix Video Streaming Platform - Architecture
+# Vibetube Video Streaming Platform - Architecture
 
-Vibeflix is a modern, unique, and fun video streaming platform. It is designed to be built in incremental phases, starting with a minimal, high-vibe user interface and scaling up to a complete distributed streaming service.
+Vibetube is a modern, unique, and fun video streaming platform. It is designed to be built in incremental phases, starting with a minimal, high-vibe user interface and scaling up to a complete distributed streaming service.
 
 ---
 
@@ -52,7 +52,7 @@ interface Video {
 ```
 
 ### 4. Styling & Aesthetics
-Unlike classic platform designs, Vibeflix targets a "cinematic neon/glow" aesthetic:
+Unlike classic platform designs, Vibetube targets a "cinematic neon/glow" aesthetic:
 * **Background**: Very dark canvas (`#08080a`) with a soft top-centered radial red/pink spotlight gradient (`rgba(229, 9, 20, 0.15)`).
 * **Search Bar**: Centered, floating glassmorphism search input with a neon hover/focus accent and smooth scaling animations.
 * **Cards**: Grid layout with rounded corners, subtle scaling hover states, and smooth image load transitions.

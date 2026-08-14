@@ -1,4 +1,8 @@
-import { Play, User } from "lucide-react";
+import { Play, Loader2, AlertTriangle, Clock } from "lucide-react";
+import { useTilt } from "../lib/useTilt";
+import { formatUploadTime } from "../lib/api";
+
+export type VideoStatus = "pending" | "processing" | "ready" | "failed";
 
 export interface Video {
   id: string;
@@ -7,59 +11,131 @@ export interface Video {
   thumbnailUrl: string;
   videoUrl: string;
   duration: string;
-  views: number;
-  uploadedAt: string;
+  /** ISO-8601 UTC. The real upload time; there is no view counting. */
+  createdAt?: string;
+  /** Submitter's project identifier. Unique within a showroom. */
+  projectId?: string | null;
   channelName: string;
   channelAvatar: string;
+  eventId?: string;
+  status?: VideoStatus;
 }
+
+/**
+ * Up to two initials from a display name, for the avatar fallback.
+ * Falls back to "?" for names that are punctuation or empty.
+ */
+export const initialsOf = (name: string): string => {
+  const words = (name || "").trim().split(/\s+/).filter(Boolean);
+  const letters = words
+    .map((word) => [...word].find((ch) => /\p{L}|\p{N}/u.test(ch)) ?? "")
+    .filter(Boolean);
+  if (!letters.length) return "?";
+  return (letters[0] + (letters[1] ?? "")).toUpperCase();
+};
 
 interface VideoCardProps {
   video: Video;
   onClick?: (video: Video) => void;
+  /** Position in the grid, used to stagger the entrance animation. */
+  index?: number;
 }
 
-const formatViews = (views: number): string => {
-  if (views >= 1000000) {
-    return `${(views / 1000000).toFixed(1).replace(/\.0$/, "")}M views`;
-  }
-  if (views >= 1000) {
-    return `${(views / 1000).toFixed(0)}K views`;
-  }
-  return `${views} views`;
-};
+export const VideoCard = ({ video, onClick, index = 0 }: VideoCardProps) => {
+  // Rows without a status predate the column and are watchable.
+  const status = video.status ?? "ready";
+  const isQueued = status === "pending";
+  const isProcessing = status === "processing";
+  const isFailed = status === "failed";
+  const isPlayable = !isQueued && !isProcessing && !isFailed;
 
-export const VideoCard = ({ video, onClick }: VideoCardProps) => {
+  const tilt = useTilt<HTMLDivElement>();
+
   return (
     <div
-      onClick={() => onClick?.(video)}
-      className="group relative flex flex-col bg-card hover:bg-card-hover rounded-2xl overflow-hidden border border-hairline shadow-lg hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 cursor-pointer"
+      ref={tilt.ref}
+      onPointerMove={isPlayable ? tilt.onPointerMove : undefined}
+      onPointerLeave={isPlayable ? tilt.onPointerLeave : undefined}
+      onClick={() => isPlayable && onClick?.(video)}
+      aria-disabled={!isPlayable}
+      // Cap the stagger so a large showroom does not leave the last cards
+      // waiting seconds to appear.
+      style={{ animationDelay: `${Math.min(index, 11) * 55}ms` }}
+      className={`group rise relative flex flex-col bg-card rounded-2xl overflow-hidden border border-hairline shadow-lg ${
+        isPlayable ? "tilt hover:bg-card-hover cursor-pointer" : "cursor-default"
+      }`}
     >
+      {isPlayable && <div className="tilt__rim" />}
+      {isPlayable && <div className="tilt__sheen" />}
+
       {/* Thumbnail section */}
       <div className="relative aspect-video w-full overflow-hidden bg-black/40 flex items-center justify-center">
         {video.thumbnailUrl && video.thumbnailUrl !== "?" ? (
           <img
             src={video.thumbnailUrl}
             alt={video.title}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className={`w-full h-full object-cover transition-transform duration-500 ${
+              isPlayable ? "group-hover:scale-105" : "opacity-40"
+            }`}
             loading="lazy"
           />
         ) : (
           <div className="text-4xl font-bold text-fg-muted select-none">
-            ?
+            {isPlayable ? "?" : ""}
           </div>
         )}
-        
-        {/* Hover overlay with Play button */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
-          <div className="p-3.5 bg-vibe-red rounded-full text-white shadow-lg shadow-vibe-red/30 transform scale-75 group-hover:scale-100 transition-transform duration-300">
-            <Play className="w-6 h-6 fill-current" />
+
+        {isQueued && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-black/50 backdrop-blur-[2px]">
+            <Clock className="w-7 h-7 text-vibe-purple" />
+            <span className="text-xs font-bold uppercase tracking-wider text-white/90">
+              Queued
+            </span>
+            <span className="text-[10px] text-white/60 font-medium px-6 text-center">
+              Waiting for a free slot. This starts automatically.
+            </span>
           </div>
-        </div>
+        )}
+
+        {isProcessing && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-black/50 backdrop-blur-[2px]">
+            <Loader2 className="w-7 h-7 text-vibe-purple animate-spin" />
+            <span className="text-xs font-bold uppercase tracking-wider text-white/90">
+              Processing
+            </span>
+            <span className="text-[10px] text-white/60 font-medium px-6 text-center">
+              Building HD streams. This appears automatically when ready.
+            </span>
+          </div>
+        )}
+
+        {isFailed && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 backdrop-blur-[2px]">
+            <AlertTriangle className="w-7 h-7 text-amber-400" />
+            <span className="text-xs font-bold uppercase tracking-wider text-white/90">
+              Processing failed
+            </span>
+            <span className="text-[10px] text-white/60 font-medium px-6 text-center">
+              This video could not be converted. Try uploading it again.
+            </span>
+          </div>
+        )}
+
+        {/* Hover overlay with Play button */}
+        {isPlayable && (
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
+            <div className="p-3.5 bg-vibe-red rounded-full text-white shadow-lg shadow-vibe-red/30 transform scale-75 group-hover:scale-100 transition-transform duration-300">
+              <Play className="w-6 h-6 fill-current" />
+            </div>
+          </div>
+        )}
 
         {/* Video Duration Badge */}
-        <span className="absolute bottom-3 right-3 px-2 py-0.5 bg-black/75 backdrop-blur-sm text-xs font-semibold text-white tracking-wide rounded-md border border-hairline">
-          {video.duration}
-        </span>
+        {isPlayable && (
+          <span className="absolute bottom-3 right-3 px-2 py-0.5 bg-black/75 backdrop-blur-sm text-xs font-semibold text-white tracking-wide rounded-md border border-hairline">
+            {video.duration}
+          </span>
+        )}
       </div>
 
       {/* Info Section */}
@@ -73,26 +149,40 @@ export const VideoCard = ({ video, onClick }: VideoCardProps) => {
               className="w-10 h-10 rounded-full object-cover border border-hairline"
             />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-stage border border-hairline flex items-center justify-center text-fg-muted">
-              <User className="w-5 h-5" />
+            // No uploaded picture: initials, so every card still reads as
+            // someone's rather than a row of identical placeholder icons.
+            <div
+              className="w-10 h-10 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-red/25 to-vibe-purple/25 text-fg text-xs font-bold tracking-wide select-none"
+              title={video.channelName}
+            >
+              {initialsOf(video.channelName)}
             </div>
           )}
         </div>
 
         {/* Title / Channel / Stats */}
         <div className="flex flex-col min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-snug text-fg line-clamp-2 group-hover:text-vibe-red transition-colors duration-200" title={video.title}>
+          <h3 className={`text-sm font-semibold leading-snug text-fg line-clamp-2 transition-colors duration-200 ${isPlayable ? "group-hover:text-vibe-red" : ""}`} title={video.title}>
             {video.title}
           </h3>
-          
+
           <p className="text-xs text-fg-muted mt-1.5 font-medium truncate">
             {video.channelName}
           </p>
-          
-          <div className="flex items-center text-xs text-fg-muted mt-1 font-medium gap-1.5">
-            <span>{formatViews(video.views)}</span>
-            <span className="w-1 h-1 bg-fg-muted/40 rounded-full"></span>
-            <span>{video.uploadedAt}</span>
+
+          <div className="flex items-center flex-wrap text-xs text-fg-muted mt-1 font-medium gap-x-1.5 gap-y-1">
+            <span>{formatUploadTime(video.createdAt)}</span>
+            {video.projectId && (
+              <>
+                <span className="w-1 h-1 bg-fg-muted/40 rounded-full" />
+                <span
+                  className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-overlay border border-hairline truncate max-w-[10rem]"
+                  title={video.projectId}
+                >
+                  {video.projectId}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>

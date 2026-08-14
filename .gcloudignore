@@ -1,0 +1,62 @@
+# Controls what `gcloud builds submit` uploads as the build context.
+#
+# NOTE: once this file exists, gcloud stops falling back to .gitignore and uses
+# only these rules. Anything the Dockerfiles need must therefore survive here --
+# in particular frontend/src, frontend/public, backend/*.py, backend/
+# mockVideos.json, and both requirements.txt files.
+#
+# Uses .gitignore syntax.
+
+# Never upload VCS metadata; it is large and useless to a build.
+.git/
+.gitignore
+
+# Rebuilt inside the image. Uploading these is pure transfer cost, and a stale
+# local node_modules or dist can shadow what the build produces.
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+venv/
+.venv/
+**/venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+backend/static/
+
+# Local runtime state
+*.db
+backend/uploads/
+
+# Secrets. The .example files stay: they are documentation and contain no
+# real values.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Local assistant/editor tooling
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+.aider*
+.continue/
+.windsurfrules
+.codeium/
+.vscode/
+.idea/
+.DS_Store
+
+# Docs and scripts that no image build reads
+*.md
+!transcoder/README.md
+dev.sh
+deploy.sh
+
+# Large local media that should never reach a build context
+*.mov
+*.MOV
+*_transcoded/
