@@ -58,6 +58,23 @@ def upload_state(event: dict, now: datetime = None) -> dict:
         "reason": None,
     }
 
+def ad_submission_open(event: dict, now: datetime = None) -> bool:
+    """Whether ads can still be submitted or replaced for this showroom.
+
+    This gates *changes only*. An ad that has already been uploaded keeps
+    playing indefinitely -- the deadline freezes the set of ads rather than
+    retiring them, so an event's videos do not silently lose their pre-roll
+    the moment the window shuts. To stop ads playing, deactivate them
+    explicitly: `admin.py set-ads --disable`.
+
+    Absent means submissions stay open, matching an unset upload deadline.
+    """
+    closes_at = parse_iso(event.get("adsClosesAt"))
+    if not closes_at:
+        return True
+    return (now or datetime.now(timezone.utc)) < closes_at
+
+
 def public_event(event: dict, now: datetime = None) -> dict:
     """Shapes an event row for the API, with the window resolved server-side."""
     state = upload_state(event, now)
@@ -66,5 +83,7 @@ def public_event(event: dict, now: datetime = None) -> dict:
         "name": event["name"],
         "uploadOpensAt": event.get("uploadOpensAt"),
         "uploadClosesAt": event.get("uploadClosesAt"),
+        "adsClosesAt": event.get("adsClosesAt"),
+        "adSubmissionOpen": ad_submission_open(event, now),
         **state,
     }

@@ -79,11 +79,22 @@ export const VideoCard = ({ video, onClick, index = 0 }: VideoCardProps) => {
             }`}
             loading="lazy"
           />
-        ) : (
-          <div className="text-4xl font-bold text-fg-muted select-none">
-            {isPlayable ? "?" : ""}
+        ) : isPlayable ? (
+          // Playable but no poster frame yet. A bare "?" here read as a broken
+          // card; say what is actually happening instead. Thumbnails are cut
+          // by the transcoder, so this is what a card looks like until that
+          // job reports back (and stays this way locally, where nothing
+          // transcodes).
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 thumb-shimmer">
+            <Loader2 className="w-6 h-6 text-fg-muted animate-spin" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-fg-muted">
+              Preparing preview
+            </span>
+            <span className="text-[10px] text-fg-muted/70 font-medium px-6 text-center">
+              The video is watchable now.
+            </span>
           </div>
-        )}
+        ) : null}
 
         {isQueued && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-black/50 backdrop-blur-[2px]">

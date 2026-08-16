@@ -279,6 +279,163 @@ Do **not** compute or send `duration` — ffprobe measures it during transcoding
 completion callback overwrites whatever was stored. Anything you send is a temporary
 placeholder shown for the few minutes before the video becomes `ready`.
 
+### Pre-roll ads
+
+A project can attach an ad that plays for **10 seconds** before its video. Matching is on
+`projectId` — the same identifier the video was uploaded with:
+
+```
+video.projectId  ==  ad.projectId
+
+  team-rocket-01  video   ->   team-rocket-01  ad   ->  10s ad, then the video
+  neon-lab-02     video   ->   (no ad)              ->  video plays immediately
+```
+
+A video with no matching ad plays straight away. Nothing else is affected.
+
+#### Step 1 — upload the video with a project ID
+
+The ad attaches to an existing video, so the video has to exist first. Give it a `projectId`
+and remember the value; it is the key everything else hangs off.
+
+```bash
+curl -X POST https://<service-url>/api/events/SUMMIT/videos \
+  -F "title=Team Rocket Demo" \
+  -F "displayName=Christina Lin" \
+  -F "projectId=team-rocket-01" \
+  -F "videoFile=@demo.mp4"
+```
+
+#### Step 2 — attach the ad using the same project ID
+
+```
+POST /api/events/{code}/ads       (multipart/form-data)
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `projectId` | **yes** | Must match a video already in this showroom |
+| `message` | **yes** | Max 280 characters |
+| `imageFile` | no | Max 5 MB. JPEG, PNG, GIF or WebP |
+
+**Text-only ad** — gets the animated treatment:
+
+```bash
+curl -X POST https://<service-url>/api/events/SUMMIT/ads \
+  -F "projectId=team-rocket-01" \
+  -F "message=Team Rocket ships faster with Google Cloud. Try it free."
+```
+
+**With an image** — the image fills the frame, the message sits beneath it:
+
+```bash
+curl -X POST https://<service-url>/api/events/SUMMIT/ads \
+  -F "projectId=team-rocket-01" \
+  -F "message=Team Rocket ships faster with Google Cloud." \
+  -F "imageFile=@sponsor.png"
+```
+
+```python
+import requests
+
+requests.post(
+    "https://<service-url>/api/events/SUMMIT/ads",
+    data={
+        "projectId": "team-rocket-01",       # must match the video's projectId
+        "message": "Team Rocket ships faster with Google Cloud.",
+    },
+    files={"imageFile": open("sponsor.png", "rb")},   # optional
+    timeout=60,
+).raise_for_status()
+```
+
+Success returns the ad's id:
+
+```json
+{ "id": "ad_3c50f7774948", "projectId": "team-rocket-01", "status": "success" }
+```
+
+#### Step 3 — check it took
+
+```bash
+curl -s https://<service-url>/api/events/SUMMIT/ads/team-rocket-01
+```
+
+```json
+{ "ad": { "id": "ad_3c50f...", "projectId": "team-rocket-01",
+          "message": "Team Rocket ships faster...", "imageUrl": null,
+          "durationSeconds": 10 } }
+```
+
+`{"ad": null}` means nothing will play — either no ad was stored for that project, or it has
+been disabled. This endpoint returns `200` either way rather than a `404`, so the player has a
+single success path.
+
+Organisers can list everything in one go, including disabled ads:
+
+```bash
+cd backend && python admin.py list-ads --code SUMMIT
+```
+
+#### Updating or replacing an ad
+
+Post again with the **same `projectId`**. It overwrites the message in place and reactivates the
+ad if it had been disabled. Omitting `imageFile` on a re-submit **keeps the existing image** —
+send a new one to change it.
+
+```bash
+curl -X POST https://<service-url>/api/events/SUMMIT/ads \
+  -F "projectId=team-rocket-01" \
+  -F "message=Updated copy, same project."
+```
+
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `400` | Empty message, message over 280 characters, or a file that is not an image |
+| `403` | Ad submissions are closed for this showroom (see below) |
+| `404` | No showroom with that code |
+| `409` | No video exists yet for that `projectId` — do Step 1 first |
+| `413` | Image over 5 MB |
+
+#### How it plays
+
+The player fetches `GET /api/events/{code}/ads/{projectId}` when a video opens — deliberately
+not bundled into the video list, which every viewer polls every 5 seconds.
+
+**With an image** the image fills the frame with the message beneath. **Without one** the
+message gets an animated treatment: a drifting colour field behind gradient type. Both show an
+`AD` badge, a countdown, and a progress bar. There is no skip.
+
+The video is not loaded at all while the ad runs — its `src` is unset — so nothing is
+downloaded behind the pre-roll. Everything fails open: no ad, a failed fetch, or a broken image
+all mean the video plays immediately. If the browser then refuses to autoplay, a large play
+button appears rather than a frozen frame.
+
+### Closing ad submissions
+
+```bash
+python admin.py list-ads --code SUMMIT
+python admin.py set-ads --code SUMMIT --closes "2026-09-01 20:00" --tz America/Los_Angeles
+python admin.py set-ads --code SUMMIT --clear-closes   # submissions open indefinitely
+python admin.py set-ads --code SUMMIT --disable        # stop every ad from playing
+python admin.py set-ads --code SUMMIT --enable
+```
+
+There are two independent controls, and the distinction matters:
+
+| Control | Effect |
+|---|---|
+| `--closes` (`adsClosesAt`) | Freezes the set of ads. New and replacement submissions get a `403`. **Ads already uploaded keep playing indefinitely.** |
+| `--disable` | Stops every ad in the showroom from playing. Reversible with `--enable`. |
+
+An ad does not expire once uploaded. The deadline exists so that copy cannot be changed after
+the event, not so the pre-rolls disappear — a showroom's videos should not silently lose their
+ads the moment the window shuts. Use `--disable` when you actually want them gone.
+
+`purge-event` deletes a showroom's ads along with its videos.
+
 ### Replacing a submission
 
 Re-uploading with a `projectId` that already exists **overwrites that video in place** rather

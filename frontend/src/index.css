@@ -501,6 +501,80 @@ body {
   animation: gate-recede 0.34s ease-in forwards;
 }
 
+/* Placeholder for a card whose poster frame has not been generated yet. */
+.thumb-shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--color-card) 30%,
+    var(--color-card-hover) 50%,
+    var(--color-card) 70%
+  );
+  background-size: 220% 100%;
+  animation: thumb-shimmer 2.2s linear infinite;
+}
+
+@keyframes thumb-shimmer {
+  from { background-position: 120% 0; }
+  to   { background-position: -120% 0; }
+}
+
+/* ==========================================================================
+   Pre-roll ads
+   A text-only ad has nothing to look at, so it gets a drifting colour field
+   and a message that scales in. Image ads only need a gentle settle.
+   ========================================================================== */
+
+.ad-aurora {
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 42% at 28% 32%, rgba(229, 9, 20, 0.55) 0%, transparent 62%),
+    radial-gradient(34% 38% at 74% 66%, rgba(139, 92, 246, 0.55) 0%, transparent 62%),
+    radial-gradient(30% 32% at 56% 22%, rgba(34, 211, 238, 0.4) 0%, transparent 64%);
+  filter: blur(52px);
+  animation: ad-drift 10s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes ad-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(4%, -4%, 0) scale(1.14); }
+}
+
+.ad-message {
+  background-image: linear-gradient(
+    100deg,
+    #ffffff 0%,
+    #ffe9ec 28%,
+    #ffffff 50%,
+    #e7dcff 72%,
+    #ffffff 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation:
+    ad-message-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) backwards,
+    holo 6s linear infinite 0.7s;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes ad-message-in {
+  from { opacity: 0; transform: scale(0.9) translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.ad-image-in {
+  animation: ad-image-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes ad-image-in {
+  from { opacity: 0; transform: scale(1.04); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* ==========================================================================
    Entrances
    ========================================================================== */
@@ -634,6 +708,10 @@ body {
   .logo-shine,
   .logo-float,
   .logo-arrive,
+  .ad-aurora,
+  .ad-message,
+  .ad-image-in,
+  .thumb-shimmer,
   .tilt:hover .tilt__rim {
     animation: none !important;
   }

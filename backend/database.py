@@ -5,6 +5,7 @@ import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "vibetube.db")
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -206,6 +207,71 @@ def insert_video(cursor, video: dict, event_code: str) -> str:
     return video_id
 
 
+def new_ad_id() -> str:
+    return f"ad_{uuid.uuid4().hex[:12]}"
+
+
+def find_ad(cursor, event_code: str, project_id: str):
+    """The active ad for a project in this showroom, or None."""
+    cursor.execute(query_placeholder("""
+        SELECT * FROM ads
+        WHERE eventId = ? AND projectId = ? AND active = 1
+        LIMIT 1
+    """), (event_code, project_id))
+    return normalize_row(cursor.fetchone())
+
+
+def list_ads(cursor, event_code: str) -> list:
+    cursor.execute(query_placeholder(
+        "SELECT * FROM ads WHERE eventId = ? ORDER BY createdAt DESC, id"
+    ), (event_code,))
+    return [normalize_row(row) for row in cursor.fetchall()]
+
+
+def upsert_ad(cursor, event_code: str, project_id: str, message: str,
+              image_url: Optional[str]) -> str:
+    """Creates or replaces the ad for a project.
+
+    Re-submitting is how an advertiser corrects their copy, so this replaces
+    rather than erroring. The image is preserved when the resubmission omits
+    one -- same reasoning as replacing a video, where dropping the picture is
+    almost never what was meant. Reactivates a previously disabled ad.
+    """
+    now = utc_now_iso()
+    existing = find_ad_any_state(cursor, event_code, project_id)
+    if existing:
+        cursor.execute(query_placeholder("""
+            UPDATE ads
+            SET message = ?, imageUrl = COALESCE(?, imageUrl),
+                active = 1, updatedAt = ?
+            WHERE id = ?
+        """), (message, image_url, now, existing["id"]))
+        return existing["id"]
+
+    ad_id = new_ad_id()
+    cursor.execute(query_placeholder("""
+        INSERT INTO ads (id, eventId, projectId, message, imageUrl, active, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+    """), (ad_id, event_code, project_id, message, image_url, now, now))
+    return ad_id
+
+
+def find_ad_any_state(cursor, event_code: str, project_id: str):
+    """Like find_ad but ignores `active`, so a disabled ad can be revived."""
+    cursor.execute(query_placeholder(
+        "SELECT * FROM ads WHERE eventId = ? AND projectId = ? LIMIT 1"
+    ), (event_code, project_id))
+    return normalize_row(cursor.fetchone())
+
+
+def set_ads_active(cursor, event_code: str, active: bool) -> int:
+    """Switches every ad in a showroom on or off. Returns rows affected."""
+    cursor.execute(query_placeholder(
+        "UPDATE ads SET active = ?, updatedAt = ? WHERE eventId = ?"
+    ), (1 if active else 0, utc_now_iso(), event_code))
+    return cursor.rowcount or 0
+
+
 def find_by_project(cursor, event_code: str, project_id: str):
     """The existing video for a project id in this showroom, or None."""
     cursor.execute(query_placeholder(
@@ -387,8 +453,9 @@ _CANONICAL_FIELDS = (
     "id", "eventId", "title", "description", "thumbnailUrl", "videoUrl",
     "duration", "createdAt", "channelName", "channelAvatar", "userId", "status",
     "processingStartedAt", "source", "projectId",
-    "code", "name", "uploadOpensAt", "uploadClosesAt",
+    "code", "name", "uploadOpensAt", "uploadClosesAt", "adsClosesAt",
     "clientId", "lastSeenAt",
+    "message", "imageUrl", "active", "updatedAt",
 )
 _CANONICAL_BY_LOWER = {field.lower(): field for field in _CANONICAL_FIELDS}
 
@@ -455,6 +522,21 @@ VIDEOS_DDL = """
 
 # Presence heartbeats, used to cap concurrent viewers per showroom. Rows are
 # transient: anything older than the TTL is swept on the next heartbeat.
+ADS_DDL = """
+    CREATE TABLE IF NOT EXISTS ads (
+        id TEXT PRIMARY KEY,
+        eventId TEXT NOT NULL,
+        -- Matches videos.projectId: an ad plays before that project's video.
+        projectId TEXT NOT NULL,
+        message TEXT NOT NULL,
+        -- Null for a text-only ad, which gets the animated treatment instead.
+        imageUrl TEXT,
+        active INTEGER DEFAULT 1,
+        createdAt TEXT,
+        updatedAt TEXT
+    )
+"""
+
 PRESENCE_DDL = """
     CREATE TABLE IF NOT EXISTS event_presence (
         eventId TEXT NOT NULL,
@@ -482,6 +564,12 @@ def init_db():
         cursor.execute(EVENTS_DDL)
         cursor.execute(VIDEOS_DDL)
         cursor.execute(PRESENCE_DDL)
+        cursor.execute(ADS_DDL)
+        conn.commit()
+
+        # Lets an organiser switch ads off once the event is over, without a
+        # redeploy. Same shape and resolver as the upload window.
+        _add_column_if_missing(cursor, "events", "adsClosesAt", "TEXT")
         conn.commit()
 
         # Columns added after the original single-tenant schema shipped.
@@ -520,6 +608,13 @@ def init_db():
         cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_event_project "
             "ON videos (eventId, projectId) WHERE projectId IS NOT NULL"
+        )
+        # One ad per project per showroom; re-submitting replaces it. Enforced
+        # in the database as well as the handler so two concurrent submissions
+        # cannot both insert.
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_ads_event_project "
+            "ON ads (eventId, projectId)"
         )
         conn.commit()
 

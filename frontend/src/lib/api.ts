@@ -40,6 +40,35 @@ export const getClientId = (): string => {
   }
 };
 
+export interface Ad {
+  id: string;
+  projectId: string;
+  message: string;
+  imageUrl: string | null;
+  durationSeconds: number;
+}
+
+/**
+ * The pre-roll ad for a project, or null when there is nothing to show.
+ *
+ * Fetched when a video opens rather than carried on the video list, which is
+ * polled by every viewer. Resolves to null on any failure: an ad system must
+ * never be able to stop a video from playing.
+ */
+export const fetchAd = async (code: string, projectId?: string | null): Promise<Ad | null> => {
+  if (!projectId) return null;
+  try {
+    const res = await fetch(
+      `/api/events/${encodeURIComponent(code)}/ads/${encodeURIComponent(projectId)}`
+    );
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body.ad ?? null;
+  } catch {
+    return null;
+  }
+};
+
 export interface PresenceState {
   present: number;
   capacity: number;

@@ -19,10 +19,11 @@ from database import (
     new_video_id, normalize_row, scalar, utc_now_iso, DatabaseBusy,
     sweep_stale_transcodes, count_by_status, count_uploads, claim_next_pending,
     touch_presence, count_present, find_by_project, replace_video,
+    find_ad, list_ads, upsert_ad, set_ads_active,
     STATUS_PENDING, STATUS_PROCESSING, STATUS_READY, STATUS_FAILED,
     SOURCE_SEED, SOURCE_UPLOAD,
 )
-from events import public_event, upload_state
+from events import public_event, upload_state, ad_submission_open
 
 # Explicitly register HLS MIME types
 mimetypes.add_type("application/x-mpegURL", ".m3u8")
@@ -91,6 +92,12 @@ MAX_UPLOADS_PER_EVENT = int(os.getenv("MAX_UPLOADS_PER_EVENT", "300"))
 # therefore approximate: a viewer who closes the tab still counts until their
 # entry expires (PRESENCE_TTL_SECONDS).
 MAX_CONCURRENT_VIEWERS = int(os.getenv("MAX_CONCURRENT_VIEWERS", "2000"))
+
+# Pre-roll ads. The duration is served to the client rather than hardcoded
+# there, so it can be tuned without a frontend rebuild -- but the client also
+# enforces it, since a browser can ignore whatever the server says.
+AD_DURATION_SECONDS = int(os.getenv("AD_DURATION_SECONDS", "10"))
+MAX_AD_MESSAGE_CHARS = int(os.getenv("MAX_AD_MESSAGE_CHARS", "280"))
 
 # Mount static files to serve video uploads (kept for local development)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
@@ -595,6 +602,112 @@ def event_presence(code: str, payload: PresencePayload):
         "present": present,
         "capacity": MAX_CONCURRENT_VIEWERS,
     }
+
+
+@app.post("/api/events/{code}/ads")
+async def create_ad(
+    code: str,
+    projectId: str = Form(...),
+    message: str = Form(...),
+    imageFile: Optional[UploadFile] = File(None),
+):
+    """Submits the pre-roll ad for a project.
+
+    Open like video upload, but the project must already have a video in this
+    showroom. An ad is forced in front of viewers rather than sitting in a
+    grid, so tying submission to an existing participant is the least this
+    endpoint should require.
+
+    Re-submitting the same projectId replaces the ad; omitting the image keeps
+    whichever one is already stored.
+    """
+    project_id = projectId.strip()
+    text = message.strip()
+
+    if not project_id:
+        raise HTTPException(status_code=400, detail="projectId is required.")
+    if not text:
+        raise HTTPException(status_code=400, detail="message is required.")
+    if len(text) > MAX_AD_MESSAGE_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"That message is too long. The limit is {MAX_AD_MESSAGE_CHARS} characters.",
+        )
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        event = load_event_or_404(cursor, code)
+
+        # The deadline gates changes only; ads already uploaded keep playing.
+        if not ad_submission_open(event):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Ad submissions for this showroom are closed. Existing ads "
+                    "keep playing but can no longer be changed."
+                ),
+            )
+
+        if not find_by_project(cursor, code, project_id):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"No video found for project '{project_id}' in this showroom. "
+                    "Upload the video before its ad."
+                ),
+            )
+
+    image_url = store_optional_image(imageFile, "ad image")
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        ad_id = upsert_ad(cursor, code, project_id, text, image_url)
+        conn.commit()
+
+    return {"id": ad_id, "projectId": project_id, "status": "success"}
+
+
+@app.get("/api/events/{code}/ads/{project_id}")
+def get_ad_for_project(code: str, project_id: str):
+    """The ad to play before a project's video, or null.
+
+    Fetched when a video opens rather than bundled into the video list: that
+    list is polled every few seconds by every viewer, and ad copy has no
+    business riding along with it.
+
+    Returns 200 with a null ad rather than 404 when there is nothing to show,
+    so the player has one success path and never treats "no ad" as an error.
+    """
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        # No window check here on purpose: an uploaded ad plays indefinitely.
+        # `active` (set by `admin.py set-ads --disable`) is the only thing that
+        # stops an ad showing.
+        ad = find_ad(cursor, code, project_id)
+
+    if not ad:
+        return JSONResponse(content={"ad": None})
+
+    return JSONResponse(content={
+        "ad": {
+            "id": ad["id"],
+            "projectId": ad["projectId"],
+            "message": ad["message"],
+            "imageUrl": ad.get("imageUrl"),
+            "durationSeconds": AD_DURATION_SECONDS,
+        }
+    })
+
+
+@app.get("/api/events/{code}/ads")
+def get_event_ads(code: str, token: str = Header(None, alias="X-Admin-Token")):
+    """Lists every ad in a showroom, including disabled ones. Admin only."""
+    require_admin(token)
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        return JSONResponse(content=list_ads(cursor, code))
 
 
 @app.get("/api/events/{code}/videos")
