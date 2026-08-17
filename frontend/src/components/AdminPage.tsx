@@ -55,10 +55,23 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // Which row is asking "are you sure?". Deleting a showroom destroys every
-  // video and ad in it, so it takes two deliberate clicks. Done inline rather
-  // than with confirm(), which blocks the whole page on a native dialog.
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // Which destructive control is asking "are you sure?", keyed so only one
+  // asks at a time. Every confirmation here is inline rather than a native
+  // confirm(): Chrome lets a user tick "prevent this page from creating
+  // additional dialogs" after a few prompts, and from then on confirm()
+  // returns false without showing anything -- so deletes silently did nothing
+  // and looked like a broken button.
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  // Runs `action` once the same control has been clicked twice.
+  const confirmThen = (key: string, action: () => void) => {
+    if (confirming === key) {
+      setConfirming(null);
+      action();
+    } else {
+      setConfirming(key);
+    }
+  };
 
   // --- Access ---------------------------------------------------------------
   // Two steps, and both have to pass before any admin data is fetched: Firebase
@@ -368,7 +381,7 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
               <button
                 type="submit"
                 disabled={busy}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-vibe-red to-vibe-purple text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-vibe-blue to-vibe-purple text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 {editing ? "Save changes" : "Create event"}
@@ -447,15 +460,16 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
                           </button>
                           <button
                             disabled={busy || !event.uploadOpen}
-                            onClick={() => {
-                              if (!confirm(`Close ${event.code}? No further video uploads or ad changes.`)) return;
-                              run(() => closeEvent(event.code), `${event.code} closed`);
-                            }}
+                            onClick={() =>
+                              confirmThen(`close:${event.code}`, () =>
+                                run(() => closeEvent(event.code), `${event.code} closed`)
+                              )
+                            }
                             title="Stop video uploads and ad changes"
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-overlay border border-hairline text-[11px] font-bold text-fg-muted hover:text-amber-600 disabled:opacity-40 cursor-pointer"
                           >
                             <Lock className="w-3 h-3" />
-                            Close
+                            {confirming === `close:${event.code}` ? "Confirm?" : "Close"}
                           </button>
                           <button
                             onClick={() => openEvent(event.code)}
@@ -467,7 +481,7 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
 
                           {/* Two-step, and the second step names what goes with
                               it -- the counts are the whole point of pausing. */}
-                          {confirmDelete === event.code ? (
+                          {confirming === `event:${event.code}` ? (
                             <>
                               <button
                                 disabled={busy}
@@ -476,7 +490,7 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
                                     () => deleteEvent(event.code),
                                     `Deleted ${event.code} and its ${event.videoCount} video(s)`
                                   ).then(() => {
-                                    setConfirmDelete(null);
+                                    setConfirming(null);
                                     if (selected === event.code) {
                                       setSelected(null);
                                       setEntries(null);
@@ -489,7 +503,7 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
                                 Delete {event.videoCount}v / {event.adCount}a?
                               </button>
                               <button
-                                onClick={() => setConfirmDelete(null)}
+                                onClick={() => setConfirming(null)}
                                 className="px-2.5 py-1.5 rounded-lg bg-overlay border border-hairline text-[11px] font-bold text-fg-muted hover:text-fg cursor-pointer"
                               >
                                 Cancel
@@ -498,7 +512,7 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
                           ) : (
                             <button
                               disabled={busy || event.code === SANDBOX_CODE}
-                              onClick={() => setConfirmDelete(event.code)}
+                              onClick={() => setConfirming(`event:${event.code}`)}
                               title={
                                 event.code === SANDBOX_CODE
                                   ? "The sandbox is recreated on restart, so it cannot be deleted"
@@ -576,21 +590,25 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
                                   : "Delete this video"
                                 : "Seeded rows have no project id"
                             }
-                            onClick={() => {
-                              const warning = hasAd
-                                ? `Delete video for project "${video.projectId}"?\n\nIts ad will be deleted too. This cannot be undone.`
-                                : `Delete video for project "${video.projectId}"? This cannot be undone.`;
-                              if (!confirm(warning)) return;
-                              run(
-                                () => deleteVideo(selected, video.projectId as string),
-                                hasAd
-                                  ? `Deleted video ${video.projectId} and its ad`
-                                  : `Deleted video ${video.projectId}`
-                              );
-                            }}
-                            className="p-2 rounded-lg bg-red-500/10 border border-red-500/40 text-red-600 hover:bg-red-500/20 disabled:opacity-30 cursor-pointer"
+                            onClick={() =>
+                              confirmThen(`video:${video.id}`, () =>
+                                run(
+                                  () => deleteVideo(selected, video.projectId as string),
+                                  hasAd
+                                    ? `Deleted video ${video.projectId} and its ad`
+                                    : `Deleted video ${video.projectId}`
+                                )
+                              )
+                            }
+                            className={`shrink-0 flex items-center gap-1.5 p-2 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors disabled:opacity-30 ${
+                              confirming === `video:${video.id}`
+                                ? "bg-red-600 border-red-600 text-white"
+                                : "bg-red-500/10 border-red-500/40 text-red-600 hover:bg-red-500/20"
+                            }`}
                           >
                             <Trash2 className="w-4 h-4" />
+                            {confirming === `video:${video.id}` &&
+                              (hasAd ? "Delete + its ad?" : "Delete?")}
                           </button>
                         </div>
                         );
@@ -629,16 +647,22 @@ export const AdminPage = ({ theme, onToggleTheme }: AdminPageProps) => {
                           <button
                             disabled={busy}
                             title="Delete this ad"
-                            onClick={() => {
-                              if (!confirm(`Delete ad for project "${ad.projectId}"?`)) return;
-                              run(
-                                () => deleteAd(selected, ad.projectId),
-                                `Deleted ad ${ad.projectId}`
-                              );
-                            }}
-                            className="p-2 rounded-lg bg-red-500/10 border border-red-500/40 text-red-600 hover:bg-red-500/20 disabled:opacity-30 cursor-pointer"
+                            onClick={() =>
+                              confirmThen(`ad:${ad.projectId}`, () =>
+                                run(
+                                  () => deleteAd(selected, ad.projectId),
+                                  `Deleted ad ${ad.projectId}`
+                                )
+                              )
+                            }
+                            className={`shrink-0 flex items-center gap-1.5 p-2 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors disabled:opacity-30 ${
+                              confirming === `ad:${ad.projectId}`
+                                ? "bg-red-600 border-red-600 text-white"
+                                : "bg-red-500/10 border-red-500/40 text-red-600 hover:bg-red-500/20"
+                            }`}
                           >
                             <Trash2 className="w-4 h-4" />
+                            {confirming === `ad:${ad.projectId}` && "Delete?"}
                           </button>
                         </div>
                       ))}

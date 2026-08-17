@@ -55,7 +55,7 @@ export const AdminSignIn = ({
           <button
             onClick={onSignIn}
             disabled={busy}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-vibe-red via-vibe-purple to-vibe-red bg-[length:200%_100%] hover:bg-[position:100%_0] text-white font-bold shadow-lg shadow-vibe-purple/25 hover:shadow-xl hover:shadow-vibe-purple/40 transition-all duration-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-vibe-blue via-vibe-purple to-vibe-blue bg-[length:200%_100%] hover:bg-[position:100%_0] text-white font-bold shadow-lg shadow-vibe-purple/25 hover:shadow-xl hover:shadow-vibe-purple/40 transition-all duration-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? (
               <Loader2 className="w-4 h-4 animate-spin" />

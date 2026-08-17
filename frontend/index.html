@@ -7,8 +7,18 @@
     <title>Vibetube — Modern Video Streaming</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Google Sans Flex with Roboto behind it.
+         Roboto is what YouTube actually serves for UI text (`Roboto, Arial,
+         sans-serif`, weights 300/400/500/700); its display face, YouTube Sans,
+         is proprietary and not licensed for use here. Google Sans Flex is the
+         nearest public equivalent and ships as one variable file covering
+         300-900, so the whole weight range costs a single download.
+
+         Listing Roboto second is close to free: browsers fetch a @font-face
+         file only when it is needed to render something, so these are not
+         downloaded while Google Sans Flex is covering the text. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;900&family=Bangers&family=Montserrat:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300..900&family=Roboto:wght@300;400;500;700;900&family=Roboto+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <!-- hls.js is required: VideoPlayerModal reads window.Hls to play the

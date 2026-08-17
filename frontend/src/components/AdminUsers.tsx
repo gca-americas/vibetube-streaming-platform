@@ -80,7 +80,7 @@ export const AdminUsers = ({ currentEmail, onError, onNotice }: AdminUsersProps)
         <button
           type="submit"
           disabled={busy || !email.trim()}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-vibe-red to-vibe-purple text-white text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-vibe-blue to-vibe-purple text-white text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus className="w-3.5 h-3.5" />
           Add

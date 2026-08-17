@@ -1,12 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Archivo", system-ui, sans-serif;
-  --font-sans: "Montserrat", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  /* One family for both display and body, as YouTube does -- the difference
+     is carried by weight, not by a second typeface. They stay separate tokens
+     so the display face can diverge later without touching every component.
+     Arial last mirrors YouTube's own stack. */
+  --font-display: "Google Sans Flex", "Roboto", Arial, sans-serif;
+  --font-sans: "Google Sans Flex", "Roboto", Arial, sans-serif;
+  /* No mono in Google Sans Flex. Roboto Mono is the matching companion, and
+     event codes and project ids genuinely need fixed advance widths. */
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
 
-  --color-vibe-red: #e50914;
-  --color-vibe-red-glow: rgba(229, 9, 20, 0.3);
+  /* Sampled from the logo: its blues cluster at hue 201deg, and the purple
+     below sits at 258deg -- so accents and ambience sweep the same arc the
+     mark does. Saturated past the logo's median so it still reads as an
+     accent at small sizes. */
+  --color-vibe-blue: #14a6f5;
+  --color-vibe-blue-glow: rgba(20, 166, 245, 0.3);
   --color-vibe-purple: #8b5cf6;
   --color-vibe-purple-glow: rgba(139, 92, 246, 0.3);
   --color-vibe-cyan: #22d3ee;
@@ -46,7 +56,7 @@
   --color-card: #121217;
   --color-card-hover: #1b1b22;
   --color-input: #17171f;
-  --color-spotlight: rgba(229, 9, 20, 0.12);
+  --color-spotlight: rgba(20, 166, 245, 0.12);
 
   /* Ambient effect layer. Dark mode carries the full cinematic treatment;
      light mode dials the same system down rather than switching it off. */
@@ -59,9 +69,9 @@
   --tilt-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.75);
 
   /* Wordmark halo strength, read by the `breathe` keyframes. */
-  --glow-red-low: 0.35;
+  --glow-blue-low: 0.35;
   --glow-purple-low: 0.22;
-  --glow-red-high: 0.55;
+  --glow-blue-high: 0.55;
   --glow-purple-high: 0.4;
 }
 
@@ -90,9 +100,9 @@
   --tilt-shadow: 0 22px 46px -20px rgba(24, 24, 27, 0.28);
 
   /* A halo tuned for a dark stage turns muddy over white. */
-  --glow-red-low: 0.12;
+  --glow-blue-low: 0.12;
   --glow-purple-low: 0.09;
-  --glow-red-high: 0.2;
+  --glow-blue-high: 0.2;
   --glow-purple-high: 0.16;
 }
 
@@ -132,14 +142,14 @@ body {
   will-change: transform;
 }
 
-.ambience__blob--red {
+.ambience__blob--blue {
   width: 46vw;
   height: 46vw;
   min-width: 320px;
   min-height: 320px;
   top: -14vw;
   left: -6vw;
-  background: radial-gradient(circle, var(--color-vibe-red) 0%, transparent 68%);
+  background: radial-gradient(circle, var(--color-vibe-blue) 0%, transparent 68%);
   animation: drift-a 23s ease-in-out infinite;
 }
 
@@ -195,7 +205,7 @@ body {
   background: conic-gradient(
     from 180deg at 50% 0%,
     transparent 0deg,
-    rgba(229, 9, 20, 0.16) 12deg,
+    rgba(20, 166, 245, 0.16) 12deg,
     rgba(139, 92, 246, 0.2) 22deg,
     transparent 34deg
   );
@@ -295,11 +305,11 @@ body {
 .holo-text {
   background-image: linear-gradient(
     100deg,
-    var(--color-vibe-red) 0%,
+    var(--color-vibe-blue) 0%,
     var(--color-vibe-purple) 30%,
     var(--color-vibe-cyan) 45%,
     var(--color-vibe-purple) 60%,
-    var(--color-vibe-red) 100%
+    var(--color-vibe-blue) 100%
   );
   background-size: 250% 100%;
   -webkit-background-clip: text;
@@ -314,15 +324,15 @@ body {
 }
 
 .holo-glow {
-  filter: drop-shadow(0 0 18px rgba(229, 9, 20, var(--glow-red-low)))
+  filter: drop-shadow(0 0 18px rgba(20, 166, 245, var(--glow-blue-low)))
           drop-shadow(0 0 40px rgba(139, 92, 246, var(--glow-purple-low)));
   animation: breathe 4.5s ease-in-out infinite;
 }
 
 @keyframes breathe {
-  0%, 100% { filter: drop-shadow(0 0 18px rgba(229, 9, 20, var(--glow-red-low)))
+  0%, 100% { filter: drop-shadow(0 0 18px rgba(20, 166, 245, var(--glow-blue-low)))
                      drop-shadow(0 0 40px rgba(139, 92, 246, var(--glow-purple-low))); }
-  50%      { filter: drop-shadow(0 0 30px rgba(229, 9, 20, var(--glow-red-high)))
+  50%      { filter: drop-shadow(0 0 30px rgba(20, 166, 245, var(--glow-blue-high)))
                      drop-shadow(0 0 64px rgba(139, 92, 246, var(--glow-purple-high))); }
 }
 
@@ -381,7 +391,7 @@ body {
   background: conic-gradient(
     from var(--rim-angle, 0deg),
     transparent 0%,
-    var(--color-vibe-red) 12%,
+    var(--color-vibe-blue) 12%,
     var(--color-vibe-purple) 25%,
     var(--color-vibe-cyan) 35%,
     transparent 50%,
@@ -529,7 +539,7 @@ body {
   inset: -30%;
   pointer-events: none;
   background:
-    radial-gradient(38% 42% at 28% 32%, rgba(229, 9, 20, 0.55) 0%, transparent 62%),
+    radial-gradient(38% 42% at 28% 32%, rgba(20, 166, 245, 0.55) 0%, transparent 62%),
     radial-gradient(34% 38% at 74% 66%, rgba(139, 92, 246, 0.55) 0%, transparent 62%),
     radial-gradient(30% 32% at 56% 22%, rgba(34, 211, 238, 0.4) 0%, transparent 64%);
   filter: blur(52px);
@@ -642,11 +652,11 @@ body {
   pointer-events: none;
   background: linear-gradient(
     100deg,
-    var(--color-vibe-red),
+    var(--color-vibe-blue),
     var(--color-vibe-purple),
     var(--color-vibe-cyan),
     var(--color-vibe-purple),
-    var(--color-vibe-red)
+    var(--color-vibe-blue)
   );
   background-size: 250% 100%;
   opacity: 0;
@@ -683,7 +693,7 @@ body {
   background: var(--color-stage);
 }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(var(--color-vibe-red), var(--color-vibe-purple));
+  background: linear-gradient(var(--color-vibe-blue), var(--color-vibe-purple));
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {

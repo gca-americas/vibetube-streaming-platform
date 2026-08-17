@@ -426,14 +426,40 @@ gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/a
 # 7. Deploy Cloud Run Transcoder Job
 echo "-> Deploying/Updating Cloud Run Job: ${JOB_NAME}..."
 # Run jobs replace if exists, else create
+# Resources are set explicitly rather than left at Cloud Run's 512Mi/1-CPU
+# default, which is not enough to transcode and silently loses renditions:
+# ffmpeg is SIGKILLed mid-encode (exit -9) and the job still reports success,
+# so a video quietly ships with 480p and 720p but no 1080p.
+#
+# Memory is the binding constraint because Cloud Run's filesystem is in-memory
+# -- the downloaded original AND all three renditions sit in /tmp, counting
+# against this limit alongside ffmpeg's own working set. Budget roughly:
+#   MAX_UPLOAD_BYTES (input) + ~3x that (renditions) + ~0.5Gi for ffmpeg
+# 2Gi leaves comfortable headroom over a 50 MB upload.
+JOB_MEMORY="${JOB_MEMORY:-2Gi}"
+# Transcoding is CPU-bound: nearly all wall time is libx264, and memory is a
+# cliff (too little and ffmpeg is SIGKILLed) rather than a throughput limit --
+# more memory buys nothing once it fits. x264 parallelises well, and Cloud Run
+# bills per CPU-second, so 4 CPUs for half the time costs about the same as 2.
+JOB_CPU="${JOB_CPU:-4}"
+# Below TRANSCODE_STALE_MINUTES, so a wedged job is killed by Cloud Run before
+# the stale sweep has to reclaim its slot.
+JOB_TIMEOUT="${JOB_TIMEOUT:-20m}"
+
 if gcloud run jobs describe ${JOB_NAME} --region=${REGION} >/dev/null 2>&1; then
   gcloud run jobs update ${JOB_NAME} \
     --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/transcoder:latest \
-    --region=${REGION}
+    --region=${REGION} \
+    --memory=${JOB_MEMORY} \
+    --cpu=${JOB_CPU} \
+    --task-timeout=${JOB_TIMEOUT}
 else
   gcloud run jobs create ${JOB_NAME} \
     --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/transcoder:latest \
-    --region=${REGION}
+    --region=${REGION} \
+    --memory=${JOB_MEMORY} \
+    --cpu=${JOB_CPU} \
+    --task-timeout=${JOB_TIMEOUT}
 fi
 
 # 8. Deploy the app service. Deployed once to learn its own URL, then updated

@@ -100,7 +100,7 @@ export const AdOverlay = ({ ad, onFinished }: AdOverlayProps) => {
       {/* Progress bar, mirroring the player's own scrubber position. */}
       <div className="absolute bottom-0 inset-x-0 h-1 bg-white/15">
         <div
-          className="h-full bg-gradient-to-r from-vibe-red to-vibe-purple transition-[width] duration-100 ease-linear"
+          className="h-full bg-gradient-to-r from-vibe-blue to-vibe-purple transition-[width] duration-100 ease-linear"
           style={{ width: `${Math.min(100, progress * 100)}%` }}
         />
       </div>

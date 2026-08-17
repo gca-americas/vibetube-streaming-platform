@@ -1,10 +1,11 @@
 import os
 import sys
+import time
 import requests
 from google.cloud import storage
 from converter import (
     transcode_to_hls, generate_master_playlist, extract_thumbnail,
-    get_video_duration,
+    get_video_duration, select_resolutions,
 )
 
 
@@ -96,6 +97,14 @@ def main():
         print("Missing required environment variables (INPUT_GCS_URI, OUTPUT_GCS_DIR, VIDEO_ID)")
         sys.exit(1)
 
+    job_started = time.monotonic()
+
+    def phase(label: str, since: float) -> float:
+        """Logs how long a phase took and returns a fresh mark."""
+        now = time.monotonic()
+        print(f"[timing] {label}: {now - since:.1f}s (elapsed {now - job_started:.1f}s)")
+        return now
+
     print(f"Starting transcode job for Video {video_id}")
     print(f"Input URI: {input_uri}")
     print(f"Output URI: {output_dir_uri}")
@@ -108,8 +117,10 @@ def main():
         blob = bucket.blob(raw_blob)
         
         local_input = "/tmp/input.mp4"
+        mark = time.monotonic()
         blob.download_to_filename(local_input)
         print("Raw video downloaded successfully.")
+        mark = phase("download", mark)
     except Exception as e:
         fail(f"Error downloading video: {e}")
         
@@ -117,7 +128,12 @@ def main():
     local_output_dir = "/tmp/transcoded"
     os.makedirs(local_output_dir, exist_ok=True)
     
-    resolutions = ["480p", "720p", "1080p"]
+    # Only rungs at or below the source height. Upscaling adds no detail and
+    # the largest rendition dominates encode time, so a 720p master skips the
+    # 1080p rung and finishes in a fraction of the time.
+    resolutions = select_resolutions(local_input)
+    encode_started = time.monotonic()
+    print(f"Encoding ladder for this source: {', '.join(resolutions)}")
     success_resolutions = []
     
     for res in resolutions:
@@ -143,14 +159,17 @@ def main():
         print("Extracting thumbnail...")
         extract_thumbnail(local_input, local_output_dir)
         print("Thumbnail extracted.")
+        phase("encode + thumbnail", encode_started)
     except Exception as e:
         fail(f"Failed to extract thumbnail: {e}")
         
     # 3. Upload outputs back to GCS
     try:
         out_bucket, out_prefix = parse_gcs_uri(output_dir_uri)
+        upload_started = time.monotonic()
         upload_folder_to_gcs(local_output_dir, out_bucket, out_prefix)
         print("Transcoded files uploaded to GCS successfully.")
+        phase("upload", upload_started)
     except Exception as e:
         fail(f"Failed to upload output to GCS: {e}")
         

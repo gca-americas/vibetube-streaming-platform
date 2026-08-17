@@ -135,7 +135,7 @@ export const VideoCard = ({ video, onClick, index = 0 }: VideoCardProps) => {
         {/* Hover overlay with Play button */}
         {isPlayable && (
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
-            <div className="p-3.5 bg-vibe-red rounded-full text-white shadow-lg shadow-vibe-red/30 transform scale-75 group-hover:scale-100 transition-transform duration-300">
+            <div className="p-3.5 bg-vibe-blue rounded-full text-white shadow-lg shadow-vibe-blue/30 transform scale-75 group-hover:scale-100 transition-transform duration-300">
               <Play className="w-6 h-6 fill-current" />
             </div>
           </div>
@@ -163,7 +163,7 @@ export const VideoCard = ({ video, onClick, index = 0 }: VideoCardProps) => {
             // No uploaded picture: initials, so every card still reads as
             // someone's rather than a row of identical placeholder icons.
             <div
-              className="w-10 h-10 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-red/25 to-vibe-purple/25 text-fg text-xs font-bold tracking-wide select-none"
+              className="w-10 h-10 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-blue/25 to-vibe-purple/25 text-fg text-xs font-bold tracking-wide select-none"
               title={video.channelName}
             >
               {initialsOf(video.channelName)}
@@ -173,7 +173,7 @@ export const VideoCard = ({ video, onClick, index = 0 }: VideoCardProps) => {
 
         {/* Title / Channel / Stats */}
         <div className="flex flex-col min-w-0 flex-1">
-          <h3 className={`text-sm font-semibold leading-snug text-fg line-clamp-2 transition-colors duration-200 ${isPlayable ? "group-hover:text-vibe-red" : ""}`} title={video.title}>
+          <h3 className={`text-sm font-semibold leading-snug text-fg line-clamp-2 transition-colors duration-200 ${isPlayable ? "group-hover:text-vibe-blue" : ""}`} title={video.title}>
             {video.title}
           </h3>
 

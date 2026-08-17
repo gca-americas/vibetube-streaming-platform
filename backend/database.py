@@ -32,6 +32,16 @@ STATUS_FAILED = "failed"
 # released and the row marked failed.
 TRANSCODE_STALE_MINUTES = int(os.getenv("TRANSCODE_STALE_MINUTES", "30"))
 
+# Stored in thumbnailUrl when a row has no poster frame yet: local uploads
+# never get one, and cloud uploads only get one once the transcoder finishes.
+# The frontend renders it as a placeholder tile.
+#
+# Never inline this into SQL as '?'. query_placeholder rewrites every ? to %s
+# for Postgres with a blind string replace, so an inline sentinel becomes a
+# bogus placeholder and the statement ends up with more placeholders than
+# parameters. Bind it as a parameter instead.
+MISSING_THUMBNAIL = "?"
+
 # Where a row came from. Only guest uploads count against a showroom's
 # upload cap; seeded content is placed by an organiser and is exempt.
 SOURCE_SEED = "seed"
@@ -218,7 +228,7 @@ def insert_video(cursor, video: dict, event_code: str) -> str:
         event_code,
         video.get("title", "Untitled"),
         video.get("description", ""),
-        video.get("thumbnailUrl", "?"),
+        video.get("thumbnailUrl", MISSING_THUMBNAIL),
         video.get("videoUrl", ""),
         video.get("duration", "0:00"),
         video.get("createdAt") or utc_now_iso(),
@@ -413,7 +423,7 @@ def replace_video(cursor, video_id: str, video: dict):
         video.get("title", "Untitled"),
         video.get("description", ""),
         video.get("videoUrl", ""),
-        video.get("thumbnailUrl", "?"),
+        video.get("thumbnailUrl", MISSING_THUMBNAIL),
         video.get("duration", "0:00"),
         video.get("channelName", "Anonymous Vibe"),
         video.get("channelAvatar"),

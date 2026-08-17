@@ -174,7 +174,7 @@ export const UploadModal = ({ eventCode, onClose, onUploadSuccess }: UploadModal
           <X className="w-5 h-5" />
         </button>
 
-        <h2 className="text-xl font-bold mb-1 font-display bg-gradient-to-r from-vibe-red to-vibe-purple bg-clip-text text-transparent">
+        <h2 className="text-xl font-bold mb-1 font-display bg-gradient-to-r from-vibe-blue to-vibe-purple bg-clip-text text-transparent">
           Publish a New Stream
         </h2>
         <p className="text-xs text-fg-muted mb-4">
@@ -252,7 +252,7 @@ export const UploadModal = ({ eventCode, onClose, onUploadSuccess }: UploadModal
                 />
               ) : (
                 // Mirrors exactly what the card will show if none is supplied.
-                <div className="w-11 h-11 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-red/25 to-vibe-purple/25 text-fg text-xs font-bold flex-shrink-0">
+                <div className="w-11 h-11 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-blue/25 to-vibe-purple/25 text-fg text-xs font-bold flex-shrink-0">
                   {displayName.trim() ? initialsOf(displayName) : <User className="w-5 h-5 text-fg-muted" />}
                 </div>
               )}
@@ -321,7 +321,7 @@ export const UploadModal = ({ eventCode, onClose, onUploadSuccess }: UploadModal
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-vibe-red to-vibe-purple hover:scale-[1.01] text-white text-sm font-bold shadow-lg shadow-vibe-red/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-vibe-blue to-vibe-purple hover:scale-[1.01] text-white text-sm font-bold shadow-lg shadow-vibe-blue/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Publishing Vibe..." : "Publish Vibe"}
           </button>

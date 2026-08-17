@@ -174,8 +174,8 @@ export const VideoPlayerModal = ({
                 className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/55 backdrop-blur-[2px] cursor-pointer group"
               >
                 <span className="relative flex items-center justify-center">
-                  <span className="absolute inset-0 rounded-full bg-vibe-red/40 blur-2xl animate-ping" />
-                  <span className="relative flex items-center justify-center w-20 h-20 md:w-24 md:h-24 rounded-full bg-vibe-red text-white shadow-2xl shadow-vibe-red/40 transition-transform duration-200 group-hover:scale-110">
+                  <span className="absolute inset-0 rounded-full bg-vibe-blue/40 blur-2xl animate-ping" />
+                  <span className="relative flex items-center justify-center w-20 h-20 md:w-24 md:h-24 rounded-full bg-vibe-blue text-white shadow-2xl shadow-vibe-blue/40 transition-transform duration-200 group-hover:scale-110">
                     <Play className="w-9 h-9 md:w-11 md:h-11 fill-current ml-1" />
                   </span>
                 </span>
@@ -230,7 +230,7 @@ export const VideoPlayerModal = ({
                 />
               ) : (
                 <div
-                  className="w-12 h-12 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-red/25 to-vibe-purple/25 text-fg text-sm font-bold shrink-0 select-none"
+                  className="w-12 h-12 rounded-full border border-hairline flex items-center justify-center bg-gradient-to-br from-vibe-blue/25 to-vibe-purple/25 text-fg text-sm font-bold shrink-0 select-none"
                   title={video.channelName}
                 >
                   {initialsOf(video.channelName)}

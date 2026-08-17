@@ -286,9 +286,9 @@ export const EventRoom = ({ code, theme, onToggleTheme }: EventRoomProps) => {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="relative mb-5">
-                <span className="absolute inset-0 rounded-full bg-vibe-red/25 blur-2xl animate-ping" />
+                <span className="absolute inset-0 rounded-full bg-vibe-blue/25 blur-2xl animate-ping" />
                 <span className="absolute -inset-4 rounded-full border border-vibe-purple/25 animate-[spin_4s_linear_infinite]" />
-                <Film className="relative w-12 h-12 text-vibe-red flicker" />
+                <Film className="relative w-12 h-12 text-vibe-blue flicker" />
               </div>
               <p className="text-sm text-fg-muted font-medium tracking-wide">
                 Tuning into the vibe frequency...

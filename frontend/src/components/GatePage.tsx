@@ -144,7 +144,7 @@ export const GatePage = ({ theme, onToggleTheme }: GatePageProps) => {
             className="flex items-center gap-3 mb-10 rise"
             style={{ animationDelay: "200ms" }}
           >
-            <span className="h-px w-10 bg-gradient-to-r from-transparent to-vibe-red/50" />
+            <span className="h-px w-10 bg-gradient-to-r from-transparent to-vibe-blue/50" />
             <span className="text-[10px] uppercase tracking-[0.35em] text-fg-muted/70 font-bold">
               Now Showing
             </span>
@@ -177,7 +177,7 @@ export const GatePage = ({ theme, onToggleTheme }: GatePageProps) => {
           <button
             type="submit"
             disabled={!code.trim()}
-            className="btn-shimmer rise w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-vibe-red via-vibe-purple to-vibe-red bg-[length:200%_100%] hover:bg-[position:100%_0] text-white font-bold shadow-lg shadow-vibe-purple/25 hover:shadow-xl hover:shadow-vibe-purple/40 hover:scale-[1.015] active:scale-[0.99] transition-all duration-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none"
+            className="btn-shimmer rise w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-vibe-blue via-vibe-purple to-vibe-blue bg-[length:200%_100%] hover:bg-[position:100%_0] text-white font-bold shadow-lg shadow-vibe-purple/25 hover:shadow-xl hover:shadow-vibe-purple/40 hover:scale-[1.015] active:scale-[0.99] transition-all duration-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none"
             style={{ animationDelay: "320ms" }}
           >
             <span className="relative z-10">Enter Showroom</span>
@@ -213,12 +213,12 @@ export const GatePage = ({ theme, onToggleTheme }: GatePageProps) => {
                     title={`${event.name} — ${event.code}`}
                     className={`group flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full bg-card/70 backdrop-blur border transition-all duration-200 cursor-pointer hover:bg-card-hover hover:scale-[1.03] ${
                       isToday(event)
-                        ? "border-vibe-red/45"
+                        ? "border-vibe-blue/45"
                         : "border-hairline hover:border-vibe-purple/45"
                     }`}
                   >
                     {isToday(event) ? (
-                      <span className="w-1.5 h-1.5 rounded-full bg-vibe-red animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-vibe-blue animate-pulse" />
                     ) : (
                       <CalendarDays className="w-3 h-3 text-fg-muted" />
                     )}

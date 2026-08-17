@@ -29,7 +29,7 @@ from database import (
     list_admin_users, add_admin_user, remove_admin_user, count_active_admins,
     normalize_email,
     STATUS_PENDING, STATUS_PROCESSING, STATUS_READY, STATUS_FAILED,
-    SOURCE_SEED, SOURCE_UPLOAD,
+    SOURCE_SEED, SOURCE_UPLOAD, MISSING_THUMBNAIL,
 )
 from auth import require_admin_ui, public_auth_config
 from events import public_event, upload_state, ad_submission_open
@@ -1159,17 +1159,25 @@ def transcode_complete(
         # The generated thumbnail only replaces the "?" placeholder. An
         # uploader who supplied their own poster frame keeps it -- otherwise
         # the transcoder would silently discard their choice minutes later.
+        #
+        # That placeholder is bound as a parameter rather than written inline
+        # as '?'. `query_placeholder` rewrites every ? to %s for Postgres with
+        # a blind string replace, so an inline '?' became the literal '%s' and
+        # left the statement with one more placeholder than it had parameters.
+        # psycopg2 then raised "IndexError: tuple index out of range", the
+        # callback 500'd, and the video sat in `processing` for ever. SQLite
+        # leaves ? alone, so this only ever failed in the cloud.
         cursor.execute(
             query_placeholder("""
                 UPDATE videos
                 SET videoUrl = ?,
-                    thumbnailUrl = CASE WHEN thumbnailUrl IS NULL OR thumbnailUrl = '?'
+                    thumbnailUrl = CASE WHEN thumbnailUrl IS NULL OR thumbnailUrl = ?
                                         THEN ? ELSE thumbnailUrl END,
                     duration = CASE WHEN ? <> '' THEN ? ELSE duration END,
                     status = ?
                 WHERE id = ?
             """),
-            (payload.videoUrl, payload.thumbnailUrl,
+            (payload.videoUrl, MISSING_THUMBNAIL, payload.thumbnailUrl,
              payload.duration, payload.duration, STATUS_READY, video_id)
         )
         conn.commit()
@@ -1225,11 +1233,36 @@ if SERVE_FRONTEND:
         # Containment check: without it, ../ in the URL would escape the build.
         within_build = candidate == FRONTEND_DIR or candidate.startswith(FRONTEND_DIR + os.sep)
         if within_build and os.path.isfile(candidate):
-            return FileResponse(candidate)
+            # Hashed filenames change whenever their content does, so they can
+            # be cached hard. index.html must NOT be -- see below.
+            headers = (
+                {"Cache-Control": "public, max-age=31536000, immutable"}
+                if full_path.startswith("assets/")
+                else None
+            )
+            return FileResponse(candidate, headers=headers)
+
+        # A missing build asset must 404 rather than fall through to the shell.
+        #
+        # Returning index.html here meant a stale, cached index.html asking for
+        # a bundle that a later deploy had replaced got 200 + HTML instead of a
+        # 404. The browser then parsed HTML as JavaScript ("Unexpected token
+        # '<'"), the app never booted, and it looked like the API was broken.
+        # Only extensionless paths are client routes; anything with a file
+        # extension was meant to be a real file.
+        if os.path.splitext(full_path)[1]:
+            raise HTTPException(status_code=404, detail="Not Found")
 
         # Social crawlers do not run JavaScript, so a client-rendered page has
         # nothing for them to read. The tags have to be in the HTML as served.
-        return HTMLResponse(render_index_with_meta(full_path, request))
+        #
+        # no-cache means "revalidate before reuse", not "never store": without
+        # it browsers kept serving an old shell after a deploy, pinning users
+        # to bundles that no longer exist.
+        return HTMLResponse(
+            render_index_with_meta(full_path, request),
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
 
 ANONYMOUS_NAMES = {"", "anonymous vibe", "anonymous"}
 

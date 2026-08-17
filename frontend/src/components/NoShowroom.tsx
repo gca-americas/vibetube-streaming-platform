@@ -13,7 +13,7 @@ export const NoShowroom = ({ code }: NoShowroomProps) => (
 
     <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 text-center max-w-sm mx-auto">
       <div className="relative mb-5 rise">
-        <span className="absolute inset-0 rounded-full bg-vibe-red/20 blur-xl animate-ping" />
+        <span className="absolute inset-0 rounded-full bg-vibe-blue/20 blur-xl animate-ping" />
         <div className="relative w-16 h-16 rounded-full bg-overlay border border-hairline flex items-center justify-center text-fg-muted">
           <SearchX className="w-8 h-8" />
         </div>
@@ -30,7 +30,7 @@ export const NoShowroom = ({ code }: NoShowroomProps) => (
         Nothing is playing under the code
       </p>
       <p
-        className="font-display font-bold tracking-[0.2em] uppercase text-vibe-red mb-8 break-all rise"
+        className="font-display font-bold tracking-[0.2em] uppercase text-vibe-blue mb-8 break-all rise"
         style={{ animationDelay: "180ms" }}
       >
         {code}
