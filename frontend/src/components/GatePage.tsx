@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Ticket } from "lucide-react";
+import { ArrowRight, Ticket, Sun, Moon, CalendarDays } from "lucide-react";
 import { navigate, roomPath } from "../lib/router";
+import { EventSummary, fetchEvents, byDateProximity, eventDate } from "../lib/api";
 import { Ambience } from "./Ambience";
 import { Logo } from "./Logo";
 import { Footer } from "./Footer";
@@ -25,17 +26,50 @@ export const recallCode = (): string => {
 
 interface GatePageProps {
   theme: "dark" | "light";
+  onToggleTheme: () => void;
 }
+
+/** Date shown on an event card. Omits the year when it is the current one. */
+const formatEventDate = (event: EventSummary): string => {
+  const date = eventDate(event);
+  if (!date) return "";
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+};
+
+const isToday = (event: EventSummary): boolean => {
+  const date = eventDate(event);
+  if (!date) return false;
+  const now = new Date();
+  return date.toDateString() === now.toDateString();
+};
 
 // Must stay just under the .logo-launch duration so the room mounts while the
 // mark is still blowing out, rather than after an empty beat.
 const LAUNCH_MS = 420;
 
-export const GatePage = ({ theme }: GatePageProps) => {
+export const GatePage = ({ theme, onToggleTheme }: GatePageProps) => {
   const [code, setCode] = useState("");
   const [launching, setLaunching] = useState(false);
   const lastCode = recallCode();
   const launchTimer = useRef<number | undefined>(undefined);
+
+  // Nearest to today first, so whatever is running now leads the list.
+  const [events, setEvents] = useState<EventSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchEvents().then((all) => {
+      if (!cancelled) setEvents([...all].sort(byDateProximity));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Navigating away mid-launch would otherwise leave the timer to fire against
   // an unmounted component.
@@ -63,6 +97,18 @@ export const GatePage = ({ theme }: GatePageProps) => {
   return (
     <div className="min-h-screen stage-vignette relative bg-stage text-fg flex flex-col overflow-hidden">
       <Ambience beam />
+
+      <button
+        onClick={onToggleTheme}
+        aria-label="Toggle theme"
+        className="absolute top-5 right-5 z-20 p-2.5 rounded-full bg-card/80 backdrop-blur border border-hairline text-fg-muted hover:text-fg shadow-lg transition-all duration-200 cursor-pointer"
+      >
+        {theme === "dark" ? (
+          <Sun className="w-5 h-5 text-amber-400" />
+        ) : (
+          <Moon className="w-5 h-5 text-indigo-500" />
+        )}
+      </button>
 
       {/* flex-1 centres the gate in whatever space the footer leaves. */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 w-full max-w-md mx-auto text-center">
@@ -148,6 +194,46 @@ export const GatePage = ({ theme }: GatePageProps) => {
               Return to{" "}
               <span className="font-bold tracking-wider text-vibe-purple">{lastCode}</span>
             </button>
+          )}
+
+          {/* Every showroom as a tag, nearest date first. Kept to one compact
+              row of chips rather than a card list, so the code field stays the
+              thing the page is about. */}
+          {events.length > 0 && (
+            <div className="w-full mt-8 rise" style={{ animationDelay: "460ms" }}>
+              <p className="text-[10px] uppercase tracking-[0.3em] text-fg-muted/70 font-bold mb-3">
+                Or jump straight in
+              </p>
+
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {events.map((event) => (
+                  <button
+                    key={event.code}
+                    onClick={() => enter(event.code)}
+                    title={`${event.name} — ${event.code}`}
+                    className={`group flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full bg-card/70 backdrop-blur border transition-all duration-200 cursor-pointer hover:bg-card-hover hover:scale-[1.03] ${
+                      isToday(event)
+                        ? "border-vibe-red/45"
+                        : "border-hairline hover:border-vibe-purple/45"
+                    }`}
+                  >
+                    {isToday(event) ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-vibe-red animate-pulse" />
+                    ) : (
+                      <CalendarDays className="w-3 h-3 text-fg-muted" />
+                    )}
+
+                    <span className="text-xs font-bold text-fg">{event.name}</span>
+
+                    {formatEventDate(event) && (
+                      <span className="text-[10px] text-fg-muted">
+                        {formatEventDate(event)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>

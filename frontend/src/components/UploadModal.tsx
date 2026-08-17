@@ -101,6 +101,13 @@ export const UploadModal = ({ eventCode, onClose, onUploadSuccess }: UploadModal
     e.preventDefault();
     if (!title || !videoFile) return;
 
+    // The server enforces this too; catching it here keeps someone from
+    // uploading a whole video before being told the field was needed.
+    if (!projectId.trim()) {
+      setError("A project ID is required.");
+      return;
+    }
+
     // Courtesy check only -- the server enforces the same ceiling and is the
     // authority. Catching it here saves the user uploading a file that is
     // going to be rejected after the whole transfer.
@@ -217,9 +224,10 @@ export const UploadModal = ({ eventCode, onClose, onUploadSuccess }: UploadModal
 
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] uppercase font-bold tracking-wider text-fg-muted">
-              Project ID <span className="text-fg-muted/60">— optional</span>
+              Project ID *
             </label>
             <input
+              required
               placeholder="e.g. team-rocket-01"
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}

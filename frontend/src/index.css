@@ -712,7 +712,9 @@ body {
   .ad-message,
   .ad-image-in,
   .thumb-shimmer,
-  .tilt:hover .tilt__rim {
+  .tilt:hover .tilt__rim,
+  /* Tailwind's pulse, used on the "on today" dot in the gate's event tags. */
+  .animate-pulse {
     animation: none !important;
   }
 

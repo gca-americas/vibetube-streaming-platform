@@ -10,9 +10,14 @@ import { useEffect, useState } from "react";
 
 export type Route =
   | { name: "gate" }
-  | { name: "room"; code: string };
+  | { name: "room"; code: string }
+  // Deliberately unlinked from the UI: reachable only by typing /admin.
+  | { name: "admin" };
 
 export const parseRoute = (pathname: string): Route => {
+  if (/^\/admin\/?$/.test(pathname)) {
+    return { name: "admin" };
+  }
   const match = pathname.match(/^\/e\/([^/]+)\/?$/);
   if (match) {
     return { name: "room", code: decodeURIComponent(match[1]) };

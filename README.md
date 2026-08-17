@@ -29,6 +29,22 @@ Each card carries a title, uploader name, and the absolute upload time in the vi
 timezone. Timestamps are stored as ISO-8601 UTC and formatted client-side.
 
 
+### Switching showrooms
+
+The chip row at the top of a showroom lists every other event; clicking one switches rooms. The
+gate page carries the same list as tags under the code field, ordered by how near each event's
+date is to today — past and future alike, so yesterday's showroom ranks with tomorrow's — and
+marks anything running today.
+
+Both are backed by `GET /api/events`, which returns `code`, `name`, and the three timestamps the
+ordering needs (`uploadOpensAt`, `uploadClosesAt`, `createdAt`). No counts and no content. The
+client picks the first non-null of the three as "the event's date".
+
+> **This makes every event code public.** Codes are generated non-sequentially so that one
+> cannot be used to guess another, but listing them removes that protection: anyone in any
+> showroom can now see and enter all the others. If a room ever needs to stay private, that
+> endpoint has to become authenticated or filtered.
+
 ### Sharing a video
 
 Opening a video puts its id in the URL as `/e/CODE?v=<videoId>`, and the player offers **X**,
@@ -94,8 +110,15 @@ npm run dev                   # http://localhost:5173
 On first start the backend creates the schema, creates a `sandbox` event, and seeds it with the
 8 default videos. Existing videos from before events existed are migrated into `sandbox`.
 
-> Viewing and uploading are both anonymous — there is no sign-in anywhere. The Firebase auth
-> code that used to sit here has been removed; the frontend needs no environment file at all.
+> **Viewing and uploading are anonymous** — no sign-in, and the frontend needs no environment
+> file. The only place that authenticates anybody is the `/admin` console, which uses Google
+> sign-in plus an allowlist; see [Admin console](#admin-console).
+>
+> The admin API **fails closed**, so with no Firebase configuration locally every
+> `/api/admin/*` call returns 503 and the console shows "sign-in unavailable". To work on it,
+> set the three `FIREBASE_*` values in `backend/.env` (see `backend/.env.example`) — Firebase
+> authorises `localhost` by default, so nothing else is needed. The `backend/admin.py` CLI
+> needs none of this and remains the way to manage events without signing in.
 
 ### Running the production container locally
 
@@ -208,7 +231,7 @@ Content-Type: multipart/form-data
 | `title` | text | **yes** | — | Shown on the card |
 | `description` | text | no | `""` | Shown in the player |
 | `displayName` | text | no | `Anonymous Vibe` | Uploader name on the card |
-| `projectId` | text | no | `""` | Re-using one **replaces** that project's video in place. Empty means none |
+| `projectId` | text | **yes** | — | Identifies the submission. Re-using one **replaces** that project's video in place |
 | `duration` | text | no | — | Rarely needed. Overwritten with the true runtime once transcoding finishes |
 | `avatarFile` | file | no | — | Max 5 MB. JPEG/PNG/GIF/WebP. Omitted → initials shown |
 | `thumbnailFile` | file | no | — | Max 5 MB. Omitted → a frame from the video's midpoint |
@@ -230,6 +253,7 @@ minutes later; poll `GET /api/events/{code}/videos` and watch that `id` until it
 | `400` | Empty file, unrecognised video container, or an `avatarFile`/`thumbnailFile` that is not an image |
 | `403` | The showroom's upload window is closed |
 | `404` | No showroom with that code |
+| `400` | Missing `projectId`, empty file, unrecognised container, or a non-image avatar/thumbnail |
 | `409` | The showroom hit its 300-upload cap, **or** that project's previous upload is still transcoding |
 | `413` | `videoFile` over 50 MB, or an image over 5 MB |
 | `503` | Server busy (connection pool saturated) — retryable, honours `Retry-After` |
@@ -243,6 +267,7 @@ when a request is rejected.
 # Minimal
 curl -X POST https://<service-url>/api/events/SUMMIT/videos \
   -F "title=Our Demo" \
+  -F "projectId=our-demo-01" \
   -F "videoFile=@demo.mp4"
 
 # Everything
@@ -295,8 +320,10 @@ A video with no matching ad plays straight away. Nothing else is affected.
 
 #### Step 1 — upload the video with a project ID
 
-The ad attaches to an existing video, so the video has to exist first. Give it a `projectId`
-and remember the value; it is the key everything else hangs off.
+`projectId` is **required** on every guest upload, and it is the key everything else hangs off
+— the ad matches on it, and the admin console deletes by it. The ad attaches to an existing
+video, so the video has to be uploaded first; posting an ad for a project with no video returns
+`409`.
 
 ```bash
 curl -X POST https://<service-url>/api/events/SUMMIT/videos \
@@ -501,17 +528,82 @@ See [Seed a showroom over HTTP](#seed-a-showroom-over-http) for worked examples.
 
 ### The transcode queue
 
-An accepted upload is written `pending` and starts transcoding only when the showroom is below
-`MAX_CONCURRENT_TRANSCODES` (20). The queue drains on every upload and again on every
-transcoder callback, so a freed slot refills immediately without anything polling for it.
+Transcoding is the expensive part of the system: every upload is a Cloud Run Job running FFmpeg
+across three renditions, taking minutes of CPU. The queue exists so that a busy showroom slows
+down instead of failing.
 
-Cards show `Queued` → `Processing` → playable, and the grid polls every 5s while either state
-is present. This is why an upload always succeeds during a busy event: a 300-upload showroom
-runs 20 at a time and everyone else simply waits, instead of a wall of errors.
+#### States
 
-A job that dies without reporting back would otherwise hold its slot forever, so any row
-processing longer than `TRANSCODE_STALE_MINUTES` (30) is treated as dead: marked failed and its
-slot released.
+A video moves through four states, and the card in the grid shows each one:
+
+| Status | Meaning | What the viewer sees |
+|---|---|---|
+| `pending` | Accepted and queued. No job started yet | **Queued** — "waiting for a free slot" |
+| `processing` | A transcoder job holds it | **Processing** — spinner |
+| `ready` | Playable | The thumbnail, or **Preparing preview** until one exists |
+| `failed` | The job died, or never started | Warning overlay |
+
+Only `ready` is playable. Locally there is no transcoder, so uploads skip straight to `ready`
+and the raw file *is* the final artifact.
+
+#### How it drains
+
+`MAX_CONCURRENT_TRANSCODES` (20) is a **per-showroom** ceiling. On upload the row is written
+`pending`, then `drain_queue` promotes as many queued rows as there is room for, oldest first.
+
+The queue is advanced in three places, all of them event-driven — nothing polls it:
+
+1. **After an upload**, in case a slot is free
+2. **On `transcode-complete`**, since a slot just opened
+3. **On `transcode-failed`**, so the queue does not stall on bad videos
+
+Claiming is race-safe by **compare-and-swap**, not by locking. `claim_next_pending` selects the
+oldest `pending` row, then updates it with `WHERE id = ? AND status = 'pending'`. If another
+instance claimed it in between, that update matches zero rows and this drain returns empty
+rather than triggering a second job for the same video.
+
+Each job is triggered *outside* the transaction that claimed it. Holding a database connection
+open across a Cloud Run API call would tie up a pool slot for a network round trip, and the
+pool is deliberately small.
+
+#### Why it is a queue and not a rejection
+
+An earlier version refused uploads over the cap with a `429`. At an event that meant a wall of
+errors and people retrying by hand — 300 uploads against a 20-slot cap would have rejected the
+other 280. Now every accepted upload succeeds and simply waits its turn.
+
+The visible cost is latency, not failure: with 20 slots and a few minutes per transcode, a
+300-video showroom works through its backlog steadily while everyone can already see their
+entry sitting in the grid marked **Queued**.
+
+#### Stuck jobs
+
+A job that dies without reporting back would hold its slot forever, and enough of those would
+wedge a showroom at its ceiling permanently. Any row `processing` for longer than
+`TRANSCODE_STALE_MINUTES` (30) is therefore treated as dead: marked `failed` and its slot
+released. The sweep runs as part of every drain, so recovery needs no cron job.
+
+#### Watching it happen
+
+The grid polls every 5 seconds **only while something is `pending` or `processing`** — an idle
+showroom makes no requests at all. Cards swap themselves from Queued to Processing to playable
+without anyone refreshing.
+
+```bash
+# What the queue is doing right now
+python admin.py list-events            # per-event video counts
+```
+
+#### Limits worth knowing
+
+- **The cap is per showroom, not global.** Ten busy rooms can run 200 concurrent jobs between
+  them. Nothing bounds the total.
+- **The drain loop itself is not locked across instances.** Individual rows cannot be
+  double-claimed, but two instances draining simultaneously can briefly exceed
+  `MAX_CONCURRENT_TRANSCODES`. It is bounded and self-corrects on the next drain.
+- **One failure mode is unreportable.** If a transcoder finishes but cannot reach the backend,
+  neither callback lands; the row stays `processing` until the stale sweep fails it, so a
+  successfully transcoded video is lost. A retry queue would be the real fix.
 
 ### Concurrent viewers
 
@@ -531,6 +623,7 @@ curl -X POST http://localhost:8000/api/events/sandbox/videos \
   -F "title=My Test Clip" \
   -F "description=Uploaded from curl" \
   -F "displayName=Christina" \
+  -F "projectId=my-test-01" \
   -F "videoFile=@/tmp/test-clip.mp4"
 # {"id":"v_a1b2c3d4e5f6","status":"success"}
 ```
@@ -552,13 +645,13 @@ The newest upload sorts first. Listing a different event will not include it.
 head -c 60000000 /dev/urandom > /tmp/too-big.mp4
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
   http://localhost:8000/api/events/sandbox/videos \
-  -F "title=Too Big" -F "videoFile=@/tmp/too-big.mp4"
+  -F "title=Too Big" -F "projectId=too-big-01" -F "videoFile=@/tmp/too-big.mp4"
 # 413
 
 # A text file wearing a .mp4 extension
 echo "not a video" > /tmp/fake.mp4
 curl -s -X POST http://localhost:8000/api/events/sandbox/videos \
-  -F "title=Fake" -F "videoFile=@/tmp/fake.mp4"
+  -F "title=Fake" -F "projectId=fake-01" -F "videoFile=@/tmp/fake.mp4"
 # {"detail":"That file does not look like a video. Please upload a video file."}
 ```
 
@@ -573,7 +666,7 @@ curl -s http://localhost:8000/api/events/LOCKED
 
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
   http://localhost:8000/api/events/LOCKED/videos \
-  -F "title=Too Late" -F "videoFile=@/tmp/test-clip.mp4"
+  -F "title=Too Late" -F "projectId=too-late-01" -F "videoFile=@/tmp/test-clip.mp4"
 # 403
 ```
 
@@ -632,6 +725,135 @@ sqlite3 backend/vibetube.db \
 
 In the cloud this happens on its own: uploads start as `processing`, and the transcoder's
 callback flips them to `ready` (or `failed`) when the job finishes.
+
+---
+
+## Admin console
+
+An unlinked page at **`/admin`** covers the things previously done from the CLI. Nothing in the
+app links to it; type the path.
+
+### Signing in
+
+Admin access is **two independent checks, and both must pass**:
+
+1. **Google sign-in via Firebase** establishes *who* you are. On its own it grants nothing —
+   anyone with a Google account can obtain a valid token for the project.
+2. **The `admin_users` table** decides whether that identity may administer anything. This is
+   the real authorisation boundary.
+
+The address checked against the allowlist is the one **Google signed**, never one the browser
+sent, so a client cannot claim to be someone else. Tokens are verified server-side in
+`backend/auth.py` with `google-auth`, which checks the signature against Firebase's
+`securetoken` certificates plus the expiry and audience; the issuer and `email_verified` are
+checked on top.
+
+The guard is declared in each route's decorator rather than called inside the handler, so a new
+admin route cannot ship unguarded by forgetting a line:
+
+```python
+@app.get("/api/admin/events", dependencies=[Depends(require_admin_ui)])
+```
+
+It **fails closed**: with no `FIREBASE_PROJECT_ID` configured, every admin endpoint returns 503
+rather than being open. The allowlist is read on *every* request, so revoking someone takes
+effect immediately instead of when their hour-long ID token expires.
+
+### Managing who has access
+
+The **Admins** panel in the console adds and removes addresses. Two guards prevent locking
+everyone out, enforced server-side rather than only hidden in the UI:
+
+- you cannot remove your own access, and
+- the last remaining admin cannot be removed.
+
+`ADMIN_BOOTSTRAP_EMAILS` seeds the table on first start so a fresh deployment is administrable.
+It **only ever adds** — an address removed through the console stays removed across redeploys.
+
+> **One manual step per Firebase project.** Google sign-in needs an OAuth client, and creating
+> one has no supported API, so `deploy.sh` cannot do it. Enable it once:
+>
+> `https://console.firebase.google.com/project/<PROJECT_ID>/authentication/providers`
+> → **Google** → Enable → pick a support email → Save
+>
+> Until then sign-in fails with `auth/operation-not-allowed`. Everything else — adding Firebase
+> to the project, creating the web app, initialising Identity Platform, and authorising the
+> Cloud Run domain — is automated.
+
+### What it does
+
+| Task | Notes |
+|---|---|
+| Create an event | Name, optional code (generated if blank), upload start/end, ad-submission deadline, and whether to seed the 8 samples |
+| Edit an event | Rename and adjust all three deadlines. The code is fixed once created |
+| **Close an event** | One button. Stops video uploads **and** ad changes by setting both deadlines to now |
+| List entries | Every video and ad in a showroom, with project id, uploader, status and timestamps |
+| Delete a video | By `projectId`. **Its ad is deleted with it** |
+| Delete an ad | By `projectId`. The video is untouched |
+| **Delete an event** | Two-click confirm naming the counts. Removes the showroom, its videos, ads and presence rows in one transaction. The sandbox is refused |
+
+Times are entered in your **local** timezone via a datetime picker and stored as UTC; reopening
+an event shows them back in local time.
+
+**Deleting a video also deletes its ad.** Ads are matched to videos by `projectId`, so an ad
+left behind after its video is gone could never play — it would just be an invisible row still
+counted in the totals. Both statements run in one transaction. Deleting an *ad* on its own
+leaves the video alone; the admin list marks videos that carry an ad so the cascade is never a
+surprise.
+
+**Deleting an event** is the one destructive action guarded by a two-step confirm rather than a
+native dialog: the second button names how many videos and ads go with it. The `sandbox`
+showroom cannot be deleted — `init_db` recreates it on the next cold start, so the delete would
+appear to work and then undo itself; the button is disabled and the server refuses it too.
+
+Deletes remove **database rows only**. Transcoded media stays in GCS — clearing objects is
+irreversible and stays a deliberate, separate `gsutil` step. The delete response returns the
+prefix to remove.
+
+Seeded videos have no `projectId`, so their delete button is disabled; they are removed with the
+whole event via `purge-event`.
+
+### Endpoints
+
+Every route below requires `Authorization: Bearer <Firebase ID token>` from an allowlisted
+account. `GET /api/auth/config` is the one public endpoint — it serves the Firebase client
+configuration the sign-in page needs.
+
+```
+GET    /api/auth/config                               public Firebase web config
+
+GET    /api/admin/me                                  confirms caller is an allowlisted admin
+GET    /api/admin/users                               the allowlist
+POST   /api/admin/users                               grant access   {"email": "..."}
+DELETE /api/admin/users/{email}                       revoke access
+
+GET    /api/admin/events                              list events with video/ad counts
+POST   /api/admin/events                              create
+PATCH  /api/admin/events/{code}                       rename / change deadlines
+POST   /api/admin/events/{code}/close                 stop uploads and ad changes
+GET    /api/admin/events/{code}/entries               videos + ads
+DELETE /api/admin/events/{code}                       delete the showroom and everything in it
+DELETE /api/admin/events/{code}/videos/{projectId}
+DELETE /api/admin/events/{code}/ads/{projectId}
+```
+
+Deleting a showroom removes its videos, ads and presence rows in one transaction. Two things
+it deliberately does not do: the **sandbox is refused** (`init_db` recreates it on the next
+cold start, so the delete would silently undo itself), and **media in GCS is left in place** —
+the response returns the prefix so it can be removed separately:
+
+```bash
+gsutil -m rm -r gs://<public-bucket>/CODE/
+```
+
+| Response | Meaning |
+|---|---|
+| `401` | No token, or it is malformed, expired, forged, or issued for another project |
+| `403` | Token is valid but the address is not on the allowlist, or its email is unverified |
+| `503` | The server has no Firebase configuration, so the admin API is disabled |
+
+The `backend/admin.py` CLI still works and is unchanged — it remains the only way to run
+`purge-event`, and the only option when you have database access but not the web app.
 
 ---
 
@@ -705,9 +927,97 @@ Cloud SQL provisioning.
 | Secret Manager | `vibetube-database-url` | Full Postgres DSN, generated on first deploy |
 | Secret Manager | `vibetube-transcoder-token` | Transcoder callback auth |
 | Secret Manager | `vibetube-admin-token` | Guards the seeding endpoints |
+| Firebase | web app + Identity Platform | Google sign-in for `/admin`. The web API key and auth domain are public values, read back by `deploy.sh` rather than stored in `.env` |
 
 Two images are built: `app` (from the root `Dockerfile`, build context is the repo root so it
 can reach both `frontend/` and `backend/`) and `transcoder`.
+
+### Deployment architecture
+
+Everything is one region (`us-central1` by default). There are four stateful places — two
+buckets, one database, one secret store — and two pieces of compute.
+
+```mermaid
+flowchart TB
+    viewer([Viewer / uploader])
+
+    subgraph run["Cloud Run"]
+        app["<b>vibetube-service</b><br/>FastAPI + built frontend<br/>max 10 instances"]
+        job["<b>transcoder-job</b><br/>FFmpeg, one execution per video<br/>max 20 concurrent"]
+    end
+
+    admin([Admin])
+    fb[["<b>Firebase Auth</b><br/>Google sign-in<br/><i>proves identity only</i>"]]
+
+    subgraph stores["State"]
+        sql[("<b>Cloud SQL</b> — PostgreSQL 15<br/>events · videos · ads · presence · admin_users<br/><i>metadata only, no media</i>")]
+        raw[("<b>&lt;project&gt;-raw-videos</b><br/>private<br/><i>originals</i>")]
+        pub[("<b>&lt;project&gt;-public-streams</b><br/>public + CORS<br/><i>HLS, thumbnails, images</i>")]
+        sec[["<b>Secret Manager</b><br/>DB DSN · transcoder token · admin token"]]
+    end
+
+    viewer -->|"HTTPS: page, API, upload"| app
+    viewer -->|"HLS segments, images — direct, never via the app"| pub
+
+    admin -->|"Google sign-in"| fb
+    fb -.->|"ID token"| admin
+    admin -->|"/admin + Bearer token"| app
+
+    app -->|"verifies the token's signature"| fb
+    app -->|"Unix socket via Cloud SQL connector"| sql
+    app -->|"stores the original"| raw
+    app -->|"stores avatars and poster images"| pub
+    app -->|"runs an execution when a slot frees"| job
+    sec -.->|"injected at start-up"| app
+
+    job -->|"downloads the original"| raw
+    job -->|"writes master.m3u8, renditions, thumbnail"| pub
+    job -->|"POST /transcode-complete (bearer token)"| app
+```
+
+**Cloud SQL holds metadata only.** No video, image, or audio bytes are ever written to the
+database — every media column stores a URL into a bucket. The whole dataset is small enough
+that `db-g1-small` is sized for connection count, not data volume.
+
+| Table | Rows | What is in it |
+|---|---|---|
+| `events` | one per showroom | `code` (the PK you type at the gate), `name`, the upload window (`uploadOpensAt` / `uploadClosesAt`), `createdAt` |
+| `videos` | one per upload | `title`, `description`, `channelName`, `projectId`, `duration`, `status`, `processingStartedAt`, and the URLs `videoUrl` / `thumbnailUrl` / `channelAvatar` |
+| `ads` | at most one active per `projectId` | `message`, optional `imageUrl`, `active`, timestamps |
+| `event_presence` | one per live viewer, transient | `eventId`, `clientId`, `lastSeenAt` — swept once past the TTL; this is what enforces the concurrent-viewer cap |
+| `admin_users` | one per admin | `email` (lower-cased PK), `addedAt`, `addedBy`, `active` — the allowlist that decides who may reach `/admin`. Read on every admin request, so revoking is immediate |
+
+`videos.status` is the transcode queue itself — `pending`, `processing`, `ready`, `failed`.
+There is no separate queue service; see [The transcode queue](#the-transcode-queue).
+
+**The two buckets are split by who may read them.**
+
+| | `<project>-raw-videos` | `<project>-public-streams` |
+|---|---|---|
+| Access | Private. Only the two service identities | Public read, CORS enabled |
+| Written by | The service, on upload | The job (HLS), the service (images) |
+| Read by | The job, once | Viewers' browsers, directly |
+| Layout | `<uuid>.<ext>` at the root | `<eventCode>/<videoId>/master.m3u8`, `.../480p\|720p\|1080p/playlist.m3u8` + `segment_NNN.ts`, `.../thumbnail.jpg`, and `images/<uuid>.<ext>` for avatars and poster images |
+| Grows by | The 50 MB upload cap, once per video | Roughly 3× the original, across the three renditions |
+
+Originals are kept rather than deleted after transcoding, so a rendition ladder can be
+regenerated without asking anyone to re-upload.
+
+**The Cloud Run service** is a single container serving both halves: FastAPI handles `/api/*`
+and everything else falls through to the built frontend, with Open Graph tags injected
+server-side into the SPA shell so shared links preview correctly. It reaches Cloud SQL over a
+Unix socket through `--add-cloudsql-instances` — no IP allowlist, no proxy to run. It never
+proxies media: viewers pull HLS straight from the public bucket, which is what keeps the
+service's egress flat as the room fills.
+
+**The Cloud Run job** is triggered by the service, not by a bucket event. That is deliberate:
+the service decides *when* to run based on how many transcodes are already in flight, which is
+what makes the cap a real queue rather than a rejection. Each execution gets `INPUT_GCS_URI`,
+`OUTPUT_GCS_DIR`, and `VIDEO_ID`; it downloads the original, produces 480p/720p/1080p HLS plus
+a mid-point thumbnail, uploads the folder, and calls back to
+`/api/videos/{id}/transcode-complete` with the transcoder token. That callback flips the row to
+`ready` and immediately starts the next queued video. A job that dies without calling back is
+picked up by the stale sweep after `TRANSCODE_STALE_MINUTES`.
 
 ### Adopting an existing deployment
 

@@ -5,6 +5,9 @@ export interface VibeEvent {
   name: string;
   uploadOpensAt: string | null;
   uploadClosesAt: string | null;
+  /** Deadline for submitting or replacing ads. Existing ads keep playing. */
+  adsClosesAt: string | null;
+  adSubmissionOpen: boolean;
   /** Resolved by the server -- never computed from the browser clock. */
   uploadOpen: boolean;
   uploadState: "open" | "pending" | "closed";
@@ -37,6 +40,54 @@ export const getClientId = (): string => {
   } catch {
     if (!memoryClientId) memoryClientId = crypto.randomUUID();
     return memoryClientId;
+  }
+};
+
+export interface EventSummary {
+  code: string;
+  name: string;
+  uploadOpensAt?: string | null;
+  uploadClosesAt?: string | null;
+  createdAt?: string | null;
+}
+
+/**
+ * The date an event "happens on": when uploads open, else when they close,
+ * else when it was created.
+ */
+export const eventDate = (event: EventSummary): Date | null => {
+  const raw = event.uploadOpensAt || event.uploadClosesAt || event.createdAt;
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+/**
+ * Nearest to today first, past and future treated alike -- an event yesterday
+ * is as relevant as one tomorrow. Same-day events tie and keep their relative
+ * order, which is what makes the sort stable. Undated events sort last.
+ */
+export const byDateProximity = (a: EventSummary, b: EventSummary): number => {
+  const now = Date.now();
+  const distance = (event: EventSummary) => {
+    const date = eventDate(event);
+    return date ? Math.abs(date.getTime() - now) : Number.POSITIVE_INFINITY;
+  };
+  return distance(a) - distance(b);
+};
+
+/**
+ * All showrooms, for the in-room switcher. Resolves to an empty list on
+ * failure so the chip row simply shows only the current event rather than
+ * breaking the page.
+ */
+export const fetchEvents = async (): Promise<EventSummary[]> => {
+  try {
+    const res = await fetch("/api/events");
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
   }
 };
 

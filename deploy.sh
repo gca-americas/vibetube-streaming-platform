@@ -40,6 +40,12 @@ PUBLIC_BUCKET="${PUBLIC_BUCKET:-${PROJECT_ID}-public-streams}"
 JOB_NAME="${JOB_NAME:-transcoder-job}"
 SERVICE_NAME="${SERVICE_NAME:-vibetube-service}"
 
+# Admin console access. These addresses are inserted into the admin_users
+# allowlist on first start; everything after that is managed in the console.
+# The seed only ever adds, so removing someone there is not undone by a
+# redeploy. See seed_admin_users in backend/database.py.
+ADMIN_BOOTSTRAP_EMAILS="${ADMIN_BOOTSTRAP_EMAILS:-weimeilin@gmail.com,linchr@google.com}"
+
 # Cloud SQL machine type. db-g1-small is the next tier above db-f1-micro;
 # both are shared-core, so a busy event may still want a dedicated vCPU
 # (db-n1-standard-1). The tier also sets the connection ceiling -- see below.
@@ -112,7 +118,105 @@ gcloud services enable \
   storage.googleapis.com \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
-  secretmanager.googleapis.com
+  secretmanager.googleapis.com \
+  identitytoolkit.googleapis.com \
+  firebase.googleapis.com
+
+# --- Firebase Authentication ------------------------------------------------
+# The admin console signs in with Google through Firebase. This block is
+# idempotent: it adds Firebase to the project and creates a web app only if
+# they are missing, then reads the client configuration back rather than
+# keeping a copy in .env, so there is one source of truth.
+#
+# The API key and auth domain read here are public values -- they identify the
+# project and ship in client code. Admin access is decided by the allowlist in
+# the database, checked server-side. See backend/auth.py.
+echo "-> Configuring Firebase Authentication..."
+
+fb_api() {
+  # $1 method, $2 url, rest: curl args. The quota-project header is required
+  # because the caller's default project may not be this one.
+  local method="$1" url="$2"; shift 2
+  curl -s -X "${method}" \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "x-goog-user-project: ${PROJECT_ID}" \
+    -H "Content-Type: application/json" \
+    "$@" "${url}"
+}
+
+json_get() { python3 -c "import sys,json;d=json.load(sys.stdin);print(d${1} if d else '')" 2>/dev/null || true; }
+
+if ! fb_api GET "https://firebase.googleapis.com/v1beta1/projects/${PROJECT_ID}" \
+     | grep -q '"projectId"'; then
+  echo "   Adding Firebase to ${PROJECT_ID}..."
+  fb_api POST "https://firebase.googleapis.com/v1beta1/projects/${PROJECT_ID}:addFirebase" -d '{}' >/dev/null
+  # addFirebase is a long-running operation; the web app call below fails
+  # until it lands, so wait rather than racing it.
+  for _ in $(seq 1 20); do
+    sleep 5
+    fb_api GET "https://firebase.googleapis.com/v1beta1/projects/${PROJECT_ID}" \
+      | grep -q '"projectId"' && break
+  done
+fi
+
+WEB_APPS="$(fb_api GET "https://firebase.googleapis.com/v1beta1/projects/${PROJECT_ID}/webApps")"
+WEB_APP_NAME="$(printf '%s' "${WEB_APPS}" | json_get "['apps'][0]['name']")"
+
+if [ -z "${WEB_APP_NAME}" ]; then
+  echo "   Creating Firebase web app..."
+  OP="$(fb_api POST "https://firebase.googleapis.com/v1beta1/projects/${PROJECT_ID}/webApps" \
+        -d '{"displayName":"Vibetube Admin"}' | json_get "['name']")"
+  for _ in $(seq 1 25); do
+    sleep 5
+    RESULT="$(fb_api GET "https://firebase.googleapis.com/v1beta1/${OP}")"
+    WEB_APP_NAME="$(printf '%s' "${RESULT}" | json_get "['response']['name']")"
+    [ -n "${WEB_APP_NAME}" ] && break
+  done
+fi
+
+if [ -z "${WEB_APP_NAME}" ]; then
+  echo "ERROR: Could not create or find a Firebase web app for ${PROJECT_ID}."
+  echo "       The admin console cannot sign in without one."
+  exit 1
+fi
+
+WEB_CONFIG="$(fb_api GET "https://firebase.googleapis.com/v1beta1/${WEB_APP_NAME}/config")"
+FIREBASE_API_KEY="$(printf '%s' "${WEB_CONFIG}" | json_get "['apiKey']")"
+FIREBASE_AUTH_DOMAIN="$(printf '%s' "${WEB_CONFIG}" | json_get "['authDomain']")"
+
+if [ -z "${FIREBASE_API_KEY}" ] || [ -z "${FIREBASE_AUTH_DOMAIN}" ]; then
+  echo "ERROR: Could not read the Firebase web configuration."
+  exit 1
+fi
+echo "   Firebase web app ready (authDomain: ${FIREBASE_AUTH_DOMAIN})"
+
+# Identity Platform must be initialised before any sign-in works. Already-
+# initialised projects return an error here, which is fine to ignore.
+fb_api POST \
+  "https://identitytoolkit.googleapis.com/v2/projects/${PROJECT_ID}/identityPlatform:initializeAuth" \
+  -d '{}' >/dev/null 2>&1 || true
+
+# Whether an operator still has to switch the Google provider on by hand.
+# Creating the OAuth client it needs has no supported API, so this is checked
+# and reported rather than automated -- see the closing message.
+#
+# The provider is identified by its resource name ending in "/google.com" and
+# by `enabled`. This response carries no `idpId` field -- that only appears on
+# the defaultSupportedIdps *catalogue* endpoint -- so grepping for one always
+# reported "not enabled" and nagged about a step already done.
+GOOGLE_IDP_ENABLED="$(fb_api GET \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT_ID}/defaultSupportedIdpConfigs" \
+  | python3 -c "
+import sys, json
+try:
+    configs = json.load(sys.stdin).get('defaultSupportedIdpConfigs', [])
+except Exception:
+    configs = []
+print(int(any(
+    c.get('name', '').endswith('/google.com') and c.get('enabled') and c.get('clientId')
+    for c in configs
+)))
+" 2>/dev/null || echo 0)"
 
 # --- Secret Manager ---------------------------------------------------------
 # Credentials are generated inside GCP on first deploy and never leave it. They
@@ -164,9 +268,34 @@ if ! gcloud storage buckets describe gs://${PUBLIC_BUCKET} >/dev/null 2>&1; then
   echo "   Creating public streaming bucket gs://${PUBLIC_BUCKET}..."
   gcloud storage buckets create gs://${PUBLIC_BUCKET} --location=${REGION}
   
-  # Allow public read access to streaming files
+  # Allow public read access to streaming files.
+  #
+  # Buckets are created with public access prevention enforced, which blocks
+  # the allUsers binding below. `gcloud storage buckets update --clear-pap`
+  # reports success but leaves the setting at "enforced"; the JSON API does
+  # apply it, so that is used here. Re-check with:
+  #   gcloud storage buckets describe gs://BUCKET \
+  #     --format='value(public_access_prevention)'   # want: inherited
+  echo "   Clearing public access prevention..."
+  curl -s -X PATCH \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "x-goog-user-project: ${PROJECT_ID}" \
+    -H "Content-Type: application/json" \
+    "https://storage.googleapis.com/storage/v1/b/${PUBLIC_BUCKET}?fields=iamConfiguration" \
+    -d '{"iamConfiguration":{"publicAccessPrevention":"inherited"}}' >/dev/null
+
+  PAP_STATE="$(gcloud storage buckets describe gs://${PUBLIC_BUCKET} \
+    --format='value(public_access_prevention)' 2>/dev/null || true)"
+  if [ "${PAP_STATE}" = "enforced" ]; then
+    echo "ERROR: public access prevention is still enforced on gs://${PUBLIC_BUCKET}."
+    echo "       This is usually an organization policy on"
+    echo "       constraints/storage.publicAccessPrevention, which only an org"
+    echo "       admin can exempt. Viewers stream directly from this bucket, so"
+    echo "       playback will not work until it is cleared."
+    exit 1
+  fi
+
   echo "   Applying public reader IAM policies..."
-  gcloud storage buckets update gs://${PUBLIC_BUCKET} --clear-pap
   gcloud storage buckets add-iam-policy-binding gs://${PUBLIC_BUCKET} \
     --member=allUsers \
     --role=roles/storage.objectViewer
@@ -186,6 +315,46 @@ EOF
   gcloud storage buckets update gs://${PUBLIC_BUCKET} --cors-file=/tmp/cors.json
   rm -f /tmp/cors.json
 fi
+
+# --- Seed media -------------------------------------------------------------
+# The seed videos are served from this bucket rather than from third-party
+# sample hosts, which rot: w3schools.com started returning 403 HTML for its
+# sample clips and silently broke half the seeded videos in every showroom.
+# They looked fine in the grid and failed only on play.
+#
+# Fetched from their original URLs on first deploy and cached in the bucket.
+# Skipped entirely once present, so redeploys cost nothing.
+SEED_MEDIA_ORIGINS="\
+sintel-trailer-hd.mp4 https://media.w3.org/2010/05/sintel/trailer_hd.mp4
+sintel-trailer.mp4 https://media.w3.org/2010/05/sintel/trailer.mp4
+bunny-trailer.mp4 https://media.w3.org/2010/05/bunny/trailer.mp4
+movie-300.mp4 https://media.w3.org/2010/05/video/movie_300.mp4"
+
+echo "-> Checking seed media in gs://${PUBLIC_BUCKET}/seed/..."
+SEED_TMP=""
+while read -r NAME ORIGIN_URL; do
+  [ -z "${NAME}" ] && continue
+  if gcloud storage objects describe "gs://${PUBLIC_BUCKET}/seed/${NAME}" >/dev/null 2>&1; then
+    continue
+  fi
+  if [ -z "${SEED_TMP}" ]; then
+    SEED_TMP="$(mktemp -d)"
+    trap 'rm -rf "${SEED_TMP}"' EXIT
+  fi
+  echo "   Fetching ${NAME}..."
+  if curl -fsSL --max-time 180 -o "${SEED_TMP}/${NAME}" "${ORIGIN_URL}"; then
+    gcloud storage cp "${SEED_TMP}/${NAME}" "gs://${PUBLIC_BUCKET}/seed/${NAME}" \
+      --content-type=video/mp4 --cache-control="public, max-age=86400" >/dev/null
+    echo "   Stored ${NAME}."
+  else
+    # Not fatal: load_seed_videos falls back to the origin URL, so the
+    # showroom still works as long as that host is up.
+    echo "   WARNING: could not fetch ${NAME} from ${ORIGIN_URL}."
+    echo "            Seeded videos will fall back to that URL directly."
+  fi
+done <<EOF
+${SEED_MEDIA_ORIGINS}
+EOF
 
 # 4. Provision Cloud SQL PostgreSQL Instance
 #
@@ -289,7 +458,7 @@ gcloud run deploy ${SERVICE_NAME} \
   --add-cloudsql-instances=${PROJECT_ID}:${REGION}:${DB_INSTANCE_NAME} \
   --service-account=${RUNTIME_SA} \
   --set-secrets="DATABASE_URL=${SECRET_DATABASE_URL}:latest,TRANSCODER_SECRET_TOKEN=${SECRET_TRANSCODER_TOKEN}:latest,ADMIN_TOKEN=${SECRET_ADMIN_TOKEN}:latest" \
-  --set-env-vars="RAW_VIDEOS_BUCKET=${RAW_BUCKET},PUBLIC_STREAMS_BUCKET=${PUBLIC_BUCKET},TRANSCODER_JOB_NAME=${JOB_NAME},GCP_PROJECT=${PROJECT_ID},GCP_LOCATION=${REGION},DB_POOL_MAX=${DB_POOL_MAX},MAX_UPLOAD_BYTES=${MAX_UPLOAD_BYTES},MAX_CONCURRENT_TRANSCODES=${MAX_CONCURRENT_TRANSCODES},MAX_UPLOADS_PER_EVENT=${MAX_UPLOADS_PER_EVENT},MAX_CONCURRENT_VIEWERS=${MAX_CONCURRENT_VIEWERS},PRESENCE_TTL_SECONDS=${PRESENCE_TTL_SECONDS},TRANSCODE_STALE_MINUTES=${TRANSCODE_STALE_MINUTES}"
+  --set-env-vars="^|^RAW_VIDEOS_BUCKET=${RAW_BUCKET}|PUBLIC_STREAMS_BUCKET=${PUBLIC_BUCKET}|TRANSCODER_JOB_NAME=${JOB_NAME}|GCP_PROJECT=${PROJECT_ID}|GCP_LOCATION=${REGION}|DB_POOL_MAX=${DB_POOL_MAX}|MAX_UPLOAD_BYTES=${MAX_UPLOAD_BYTES}|MAX_CONCURRENT_TRANSCODES=${MAX_CONCURRENT_TRANSCODES}|MAX_UPLOADS_PER_EVENT=${MAX_UPLOADS_PER_EVENT}|MAX_CONCURRENT_VIEWERS=${MAX_CONCURRENT_VIEWERS}|PRESENCE_TTL_SECONDS=${PRESENCE_TTL_SECONDS}|TRANSCODE_STALE_MINUTES=${TRANSCODE_STALE_MINUTES}|FIREBASE_PROJECT_ID=${PROJECT_ID}|FIREBASE_API_KEY=${FIREBASE_API_KEY}|FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}|ADMIN_BOOTSTRAP_EMAILS=${ADMIN_BOOTSTRAP_EMAILS}"
 
 # Get the service URL, which is now both the site and the API origin.
 SERVICE_URL=$(gcloud run services describe ${SERVICE_NAME} --region=${REGION} --format="value(status.url)")
@@ -301,10 +470,81 @@ gcloud run services update ${SERVICE_NAME} \
   --region=${REGION} \
   --update-env-vars="BACKEND_URL=${SERVICE_URL}"
 
+# Firebase refuses a sign-in popup from any origin not on this list, so every
+# Cloud Run host has to be added or the admin console fails with
+# auth/unauthorized-domain.
+#
+# Cloud Run serves the service on more than one hostname -- the project-number
+# form and the older hashed form -- and an operator may reach /admin by either,
+# so all of them are authorised rather than just status.url. They come from the
+# urls annotation; parsing them out of one URL string with sed is what broke
+# this before (BSD sed has no \? in a basic regex, so the host came out as
+# "https:").
+#
+# The API replaces authorizedDomains wholesale, so existing entries are read
+# first and merged here.
+echo "-> Authorising Cloud Run hosts for Firebase sign-in..."
+SERVICE_URLS_JSON="$(gcloud run services describe ${SERVICE_NAME} --region=${REGION} \
+  --format="value(metadata.annotations['run.googleapis.com/urls'])" 2>/dev/null || true)"
+
+CURRENT_DOMAINS_JSON="$(fb_api GET \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT_ID}/config" \
+  | python3 -c "import sys,json;print(json.dumps(json.load(sys.stdin).get('authorizedDomains',[])))" 2>/dev/null || echo '[]')"
+
+DOMAIN_RESULT="$(python3 - "${CURRENT_DOMAINS_JSON}" "${SERVICE_URLS_JSON}" "${SERVICE_URL}" <<'PYEOF'
+import json, sys
+from urllib.parse import urlparse
+
+existing = json.loads(sys.argv[1] or "[]")
+try:
+    urls = json.loads(sys.argv[2] or "[]")
+except json.JSONDecodeError:
+    urls = []
+urls.append(sys.argv[3])
+
+added = []
+for url in urls:
+    host = urlparse(url).netloc or urlparse("https://" + url).netloc
+    if host and host not in existing:
+        existing.append(host)
+        added.append(host)
+
+print(json.dumps({"payload": {"authorizedDomains": existing}, "added": added}))
+PYEOF
+)"
+
+DOMAINS_ADDED="$(printf '%s' "${DOMAIN_RESULT}" | python3 -c "import sys,json;print(' '.join(json.load(sys.stdin)['added']))")"
+if [ -n "${DOMAINS_ADDED}" ]; then
+  printf '%s' "${DOMAIN_RESULT}" \
+    | python3 -c "import sys,json;print(json.dumps(json.load(sys.stdin)['payload']))" \
+    | fb_api PATCH \
+        "https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT_ID}/config?updateMask=authorizedDomains" \
+        --data-binary @- >/dev/null
+  echo "   Added: ${DOMAINS_ADDED}"
+else
+  echo "   Already authorised."
+fi
+
 echo "==============================================="
 echo "  Deployment completed successfully!"
 echo "  Vibetube: ${SERVICE_URL}"
+echo "  Admin:    ${SERVICE_URL}/admin"
 echo ""
+
+if [ "${GOOGLE_IDP_ENABLED:-0}" = "0" ]; then
+  echo "  ONE MANUAL STEP REMAINS -- the admin console cannot sign in yet."
+  echo "  Google sign-in needs an OAuth client, and creating one has no API."
+  echo "  Enable it once, here (takes about 10 seconds):"
+  echo ""
+  echo "    https://console.firebase.google.com/project/${PROJECT_ID}/authentication/providers"
+  echo "    -> Google -> Enable -> pick a support email -> Save"
+  echo ""
+  echo "  Admins allowed to sign in after that:"
+  echo "    ${ADMIN_BOOTSTRAP_EMAILS}"
+  echo "  Manage the rest in the console's Admins panel."
+  echo ""
+fi
+
 echo "  Create an event before sharing a link. The DSN comes from Secret"
 echo "  Manager, so no password is printed here or stored on disk:"
 echo ""

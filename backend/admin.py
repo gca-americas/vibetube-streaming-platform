@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from database import (
     SANDBOX_EVENT_CODE, create_event, get_db_conn, get_event, init_db,
     normalize_row, query_placeholder, scalar, list_ads, set_ads_active,
+    delete_event,
 )
 from events import parse_iso, upload_state
 
@@ -197,12 +198,12 @@ def cmd_purge_event(args):
             if confirm.strip().lower() not in ("y", "yes"):
                 raise SystemExit("Aborted.")
 
-        cursor.execute(query_placeholder("DELETE FROM ads WHERE eventId = ?"), (args.code,))
-        cursor.execute(query_placeholder("DELETE FROM videos WHERE eventId = ?"), (args.code,))
-        cursor.execute(query_placeholder("DELETE FROM events WHERE code = ?"), (args.code,))
+        # Same helper the admin console calls, so the two cannot drift.
+        removed = delete_event(cursor, args.code)
         conn.commit()
 
-    print(f"Deleted event {args.code} and {count} videos.")
+    count = removed["videos"]
+    print(f"Deleted event {args.code}, {count} videos and {removed['ads']} ads.")
     print(f"Note: transcoded media under gs://<public-bucket>/{args.code}/ is not removed.")
     print(f"Remove it with: gsutil -m rm -r gs://<public-bucket>/{args.code}/")
 

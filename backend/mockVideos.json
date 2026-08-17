@@ -7,17 +7,19 @@
     "videoUrl": "https://media.w3.org/2010/05/sintel/trailer_hd.mp4",
     "duration": "1:24:05",
     "channelName": "SynthHorizon",
-    "channelAvatar": "/images/avatars/v1.jpg"
+    "channelAvatar": "/images/avatars/v1.jpg",
+    "seedFile": "sintel-trailer-hd.mp4"
   },
   {
     "id": "v2",
     "title": "Coding a Neural Network from Scratch in Assembly",
     "description": "Because writing in Python is too mainstream. Watch me lose my mind trying to optimize matrix multiplications in x86-64 assembly language over the span of 12 hours.",
     "thumbnailUrl": "/images/thumbnails/v2.jpg",
-    "videoUrl": "https://www.w3schools.com/html/movie.mp4",
+    "videoUrl": "https://media.w3.org/2010/05/video/movie_300.mp4",
     "duration": "48:12",
     "channelName": "LowLevelWizard",
-    "channelAvatar": "/images/avatars/v2.jpg"
+    "channelAvatar": "/images/avatars/v2.jpg",
+    "seedFile": "movie-300.mp4"
   },
   {
     "id": "v3",
@@ -27,17 +29,19 @@
     "videoUrl": "https://media.w3.org/2010/05/bunny/trailer.mp4",
     "duration": "22:15",
     "channelName": "TokyoDrifter",
-    "channelAvatar": "/images/avatars/v3.jpg"
+    "channelAvatar": "/images/avatars/v3.jpg",
+    "seedFile": "bunny-trailer.mp4"
   },
   {
     "id": "v4",
     "title": "Building the Ultimate Mech Keyboard (ASMR / Sound Test)",
     "description": "Lubing linear switches, installing custom foam, and modding stabilizers on a custom aluminum 65% keyboard. Full sound profile test at the end.",
     "thumbnailUrl": "/images/thumbnails/v4.jpg",
-    "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+    "videoUrl": "https://media.w3.org/2010/05/sintel/trailer.mp4",
     "duration": "15:40",
     "channelName": "ClickyClack",
-    "channelAvatar": "/images/avatars/v4.jpg"
+    "channelAvatar": "/images/avatars/v4.jpg",
+    "seedFile": "sintel-trailer.mp4"
   },
   {
     "id": "v5",
@@ -47,17 +51,19 @@
     "videoUrl": "https://media.w3.org/2010/05/sintel/trailer_hd.mp4",
     "duration": "10:02",
     "channelName": "EscapeColonQ",
-    "channelAvatar": "/images/avatars/v5.jpg"
+    "channelAvatar": "/images/avatars/v5.jpg",
+    "seedFile": "sintel-trailer-hd.mp4"
   },
   {
     "id": "v6",
     "title": "Ambient Space Journey to the Edge of the Universe",
     "description": "Relax and unwind with slow-motion visualizations of deep space nebulas, black holes, and distant galaxies accompanied by deep ambient drones.",
     "thumbnailUrl": "/images/thumbnails/v6.jpg",
-    "videoUrl": "https://www.w3schools.com/html/movie.mp4",
+    "videoUrl": "https://media.w3.org/2010/05/video/movie_300.mp4",
     "duration": "3:00:00",
     "channelName": "StellarVibes",
-    "channelAvatar": "/images/avatars/v6.jpg"
+    "channelAvatar": "/images/avatars/v6.jpg",
+    "seedFile": "movie-300.mp4"
   },
   {
     "id": "v7",
@@ -67,16 +73,18 @@
     "videoUrl": "https://media.w3.org/2010/05/bunny/trailer.mp4",
     "duration": "18:25",
     "channelName": "PixelPerfect",
-    "channelAvatar": "/images/avatars/v7.jpg"
+    "channelAvatar": "/images/avatars/v7.jpg",
+    "seedFile": "bunny-trailer.mp4"
   },
   {
     "id": "v8",
     "title": "Analog Synthesizers: A Deep Dive into Frequency Modulation",
     "description": "Patching patch bays, manipulating oscillators, and exploring the warmer side of sub-bass. A hands-on tutorial with Eurorack hardware modules.",
     "thumbnailUrl": "/images/thumbnails/v8.jpg",
-    "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+    "videoUrl": "https://media.w3.org/2010/05/sintel/trailer.mp4",
     "duration": "34:10",
     "channelName": "WaveformLab",
-    "channelAvatar": "/images/avatars/v8.jpg"
+    "channelAvatar": "/images/avatars/v8.jpg",
+    "seedFile": "sintel-trailer.mp4"
   }
 ]
