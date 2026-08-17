@@ -13,7 +13,7 @@ interface AmbienceProps {
 
 export const Ambience = ({ beam = false }: AmbienceProps) => (
   <div className="ambience" aria-hidden="true">
-    <div className="ambience__blob ambience__blob--red" />
+    <div className="ambience__blob ambience__blob--blue" />
     <div className="ambience__blob ambience__blob--purple" />
     <div className="ambience__blob ambience__blob--cyan" />
     {beam && <div className="ambience__beam" />}

@@ -19,7 +19,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from database import (
     SANDBOX_EVENT_CODE, create_event, get_db_conn, get_event, init_db,
-    normalize_row, query_placeholder, scalar,
+    normalize_row, query_placeholder, scalar, list_ads, set_ads_active,
+    delete_event,
 )
 from events import parse_iso, upload_state
 
@@ -103,6 +104,56 @@ def cmd_list_events(args):
             count = scalar(cursor.fetchone())
             print(f"{event['code']:<12} {count:<7} {describe_window(event)}  {event['name']}")
 
+def cmd_list_ads(args):
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        if not get_event(cursor, args.code):
+            raise SystemExit(f"No event with code {args.code!r}.")
+        ads = list_ads(cursor, args.code)
+
+    if not ads:
+        print(f"No ads in {args.code}.")
+        return
+
+    print(f"{'PROJECT':<20} {'STATE':<9} {'IMAGE':<6} MESSAGE")
+    for ad in ads:
+        state = "active" if ad.get("active") else "disabled"
+        has_image = "yes" if ad.get("imageUrl") else "-"
+        message = (ad.get("message") or "").replace("\n", " ")
+        if len(message) > 60:
+            message = message[:57] + "..."
+        print(f"{ad['projectId']:<20} {state:<9} {has_image:<6} {message}")
+
+
+def cmd_set_ads(args):
+    """Closes ads for an event, or switches them all off outright."""
+    closes_at = parse_local_time(args.closes, args.tz)
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        event = get_event(cursor, args.code)
+        if not event:
+            raise SystemExit(f"No event with code {args.code!r}.")
+
+        if args.disable or args.enable:
+            changed = set_ads_active(cursor, args.code, active=bool(args.enable))
+            conn.commit()
+            print(f"{'Enabled' if args.enable else 'Disabled'} {changed} ad(s) in {args.code}.")
+            return
+
+        new_closes = None if args.clear_closes else (closes_at or event.get("adsClosesAt"))
+        cursor.execute(query_placeholder(
+            "UPDATE events SET adsClosesAt = ? WHERE code = ?"
+        ), (new_closes, args.code))
+        conn.commit()
+
+    if new_closes:
+        print(f"Ad submissions for {args.code} close at {new_closes}. "
+              "Existing ads keep playing.")
+    else:
+        print(f"Ad submissions for {args.code} are open indefinitely.")
+
+
 def cmd_set_window(args):
     opens_at = parse_local_time(args.opens, args.tz)
     closes_at = parse_local_time(args.closes, args.tz)
@@ -147,11 +198,12 @@ def cmd_purge_event(args):
             if confirm.strip().lower() not in ("y", "yes"):
                 raise SystemExit("Aborted.")
 
-        cursor.execute(query_placeholder("DELETE FROM videos WHERE eventId = ?"), (args.code,))
-        cursor.execute(query_placeholder("DELETE FROM events WHERE code = ?"), (args.code,))
+        # Same helper the admin console calls, so the two cannot drift.
+        removed = delete_event(cursor, args.code)
         conn.commit()
 
-    print(f"Deleted event {args.code} and {count} videos.")
+    count = removed["videos"]
+    print(f"Deleted event {args.code}, {count} videos and {removed['ads']} ads.")
     print(f"Note: transcoded media under gs://<public-bucket>/{args.code}/ is not removed.")
     print(f"Remove it with: gsutil -m rm -r gs://<public-bucket>/{args.code}/")
 
@@ -180,7 +232,28 @@ def main():
     window.add_argument("--clear-closes", action="store_true", help="Remove the close bound")
     window.set_defaults(func=cmd_set_window)
 
-    purge = sub.add_parser("purge-event", help="Delete an event and its videos")
+    ads_list = sub.add_parser("list-ads", help="List a showroom's pre-roll ads")
+    ads_list.add_argument("--code", required=True)
+    ads_list.set_defaults(func=cmd_list_ads)
+
+    ads_set = sub.add_parser(
+        "set-ads",
+        help="Close ad submissions for a showroom, or switch ads off entirely",
+    )
+    ads_set.add_argument("--code", required=True)
+    ads_set.add_argument("--closes",
+                         help="Stop accepting new or replacement ads after this "
+                              "local time. Existing ads keep playing.")
+    ads_set.add_argument("--tz", default="UTC", help="Timezone for --closes")
+    ads_set.add_argument("--clear-closes", action="store_true",
+                         help="Remove the deadline; submissions stay open")
+    ads_set.add_argument("--disable", action="store_true",
+                         help="Stop every ad in the showroom from playing")
+    ads_set.add_argument("--enable", action="store_true",
+                         help="Reactivate every ad in the showroom")
+    ads_set.set_defaults(func=cmd_set_ads)
+
+    purge = sub.add_parser("purge-event", help="Delete an event, its videos and its ads")
     purge.add_argument("--code", required=True)
     purge.add_argument("--yes", action="store_true", help="Skip the confirmation prompt")
     purge.set_defaults(func=cmd_purge_event)

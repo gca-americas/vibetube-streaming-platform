@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { GatePage } from "./components/GatePage";
 import { EventRoom } from "./components/EventRoom";
+import { AdminPage } from "./components/AdminPage";
 import { useRoute } from "./lib/router";
 
 export default function App() {
@@ -25,6 +26,11 @@ export default function App() {
     localStorage.setItem("theme", nextTheme);
   };
 
+  // Unlinked on purpose: reachable only by typing /admin.
+  if (route.name === "admin") {
+    return <AdminPage theme={theme} onToggleTheme={toggleTheme} />;
+  }
+
   if (route.name === "room") {
     return (
       <EventRoom
@@ -37,5 +43,5 @@ export default function App() {
     );
   }
 
-  return <GatePage theme={theme} />;
+  return <GatePage theme={theme} onToggleTheme={toggleTheme} />;
 }

@@ -10,11 +10,11 @@ import { Logo } from "./Logo";
 import { Footer } from "./Footer";
 import { Sidebar } from "./Sidebar";
 import {
-  EventNotFoundError, ShowroomFullError, VibeEvent,
-  fetchEvent, fetchEventVideos, formatWindowTime, sendPresence,
+  EventNotFoundError, ShowroomFullError, VibeEvent, EventSummary,
+  fetchEvent, fetchEventVideos, fetchEvents, formatWindowTime, sendPresence,
 } from "../lib/api";
 import { RoomFull } from "./RoomFull";
-import { navigate, readVideoParam, syncVideoParam } from "../lib/router";
+import { navigate, roomPath, readVideoParam, syncVideoParam } from "../lib/router";
 import { rememberCode } from "./GatePage";
 
 // How often to re-check videos that are still queued or transcoding.
@@ -99,6 +99,19 @@ export const EventRoom = ({ code, theme, onToggleTheme }: EventRoomProps) => {
   // Claim a seat on arrival, then renew it. Losing the seat mid-visit does not
   // eject anyone: the server never evicts an already-present viewer, so only
   // the initial claim can be refused.
+  // Other showrooms, for the chip switcher. Fetched once per room; the list
+  // changes far too rarely to justify polling it.
+  const [otherEvents, setOtherEvents] = useState<EventSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchEvents().then((all) => {
+      if (!cancelled) setOtherEvents(all.filter((e) => e.code !== code));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+
   const [presenceAttempt, setPresenceAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -237,29 +250,45 @@ export const EventRoom = ({ code, theme, onToggleTheme }: EventRoomProps) => {
           rather than flex siblings keeps the footer full-width. */}
       <div className="relative z-10 flex-1 flex flex-col pt-16 lg:pl-[72px]">
         <div className="flex-1 flex flex-col px-4 md:px-6 py-5 w-full">
-          {/* Context strip, in the position YouTube gives its filter chips. */}
-          <div className="flex items-center flex-wrap gap-2 mb-6 rise">
-            <span className="px-3 py-1.5 rounded-full bg-fg text-stage text-xs font-bold">
+          {/* Context strip, in the position YouTube gives its filter chips.
+              The current showroom is the solid chip; the rest switch rooms.
+              Scrolls horizontally rather than wrapping once there are many. */}
+          <div className="flex items-center gap-2 mb-6 rise overflow-x-auto pb-1 -mx-1 px-1">
+            <span className="shrink-0 px-3 py-1.5 rounded-full bg-fg text-stage text-xs font-bold whitespace-nowrap">
               {event?.name || "Loading showroom…"}
             </span>
-            <span className="px-3 py-1.5 rounded-full bg-overlay border border-hairline text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+            <span className="shrink-0 px-3 py-1.5 rounded-full bg-overlay border border-hairline text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
               {code}
             </span>
             {notice && (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-overlay border border-hairline text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+              <span className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-overlay border border-hairline text-[10px] font-bold uppercase tracking-wider text-fg-muted">
                 {notice.icon}
                 {notice.text}
               </span>
             )}
+
+            {otherEvents.length > 0 && (
+              <span className="shrink-0 w-px h-5 bg-hairline mx-1" aria-hidden="true" />
+            )}
+            {otherEvents.map((other) => (
+              <button
+                key={other.code}
+                onClick={() => navigate(roomPath(other.code))}
+                title={`Go to ${other.name}`}
+                className="shrink-0 px-3 py-1.5 rounded-full bg-overlay border border-hairline text-xs font-medium text-fg-muted hover:text-fg hover:border-vibe-purple/40 transition-all duration-150 cursor-pointer whitespace-nowrap"
+              >
+                {other.name}
+              </button>
+            ))}
           </div>
 
         <main className="flex-1">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="relative mb-5">
-                <span className="absolute inset-0 rounded-full bg-vibe-red/25 blur-2xl animate-ping" />
+                <span className="absolute inset-0 rounded-full bg-vibe-blue/25 blur-2xl animate-ping" />
                 <span className="absolute -inset-4 rounded-full border border-vibe-purple/25 animate-[spin_4s_linear_infinite]" />
-                <Film className="relative w-12 h-12 text-vibe-red flicker" />
+                <Film className="relative w-12 h-12 text-vibe-blue flicker" />
               </div>
               <p className="text-sm text-fg-muted font-medium tracking-wide">
                 Tuning into the vibe frequency...

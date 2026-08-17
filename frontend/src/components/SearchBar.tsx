@@ -18,7 +18,7 @@ export const SearchBar = ({
     <div className={compact ? "w-full" : "w-full max-w-2xl mx-auto"}>
       <div className="relative group">
         {/* Glow effect under the search bar */}
-        <div className={`absolute -inset-0.5 bg-gradient-to-r from-vibe-red to-vibe-purple rounded-full blur-md transition duration-500 group-focus-within:duration-200 ${
+        <div className={`absolute -inset-0.5 bg-gradient-to-r from-vibe-blue to-vibe-purple rounded-full blur-md transition duration-500 group-focus-within:duration-200 ${
           compact
             ? "opacity-0 group-hover:opacity-25 group-focus-within:opacity-50"
             : "opacity-30 group-hover:opacity-50 group-focus-within:opacity-70"
@@ -28,7 +28,7 @@ export const SearchBar = ({
         <div className={`relative flex items-center bg-input/90 backdrop-blur-xl border border-hairline rounded-full transition-all duration-300 ${
           compact ? "px-4 py-2 shadow-lg" : "px-5 py-3.5 shadow-2xl"
         }`}>
-          <Search className={`text-fg-muted group-focus-within:text-vibe-red transition-colors duration-200 ${
+          <Search className={`text-fg-muted group-focus-within:text-vibe-blue transition-colors duration-200 ${
             compact ? "w-4 h-4 mr-2.5" : "w-5 h-5 mr-3.5"
           }`} />
 

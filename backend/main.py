@@ -1,6 +1,7 @@
 import html
 import os
 import re
+import secrets
 import shutil
 import struct
 import uvicorn
@@ -9,7 +10,9 @@ import mimetypes
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from urllib.parse import unquote
-from fastapi import FastAPI, File, UploadFile, Form, Header, HTTPException, Request
+from fastapi import (
+    Depends, FastAPI, File, UploadFile, Form, Header, HTTPException, Request,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,10 +22,17 @@ from database import (
     new_video_id, normalize_row, scalar, utc_now_iso, DatabaseBusy,
     sweep_stale_transcodes, count_by_status, count_uploads, claim_next_pending,
     touch_presence, count_present, find_by_project, replace_video,
+    find_ad, list_ads, upsert_ad, set_ads_active,
+    create_event, list_events_with_counts, set_event_windows,
+    delete_video_by_project, delete_ad_by_project, delete_event,
+    SANDBOX_EVENT_CODE,
+    list_admin_users, add_admin_user, remove_admin_user, count_active_admins,
+    normalize_email,
     STATUS_PENDING, STATUS_PROCESSING, STATUS_READY, STATUS_FAILED,
-    SOURCE_SEED, SOURCE_UPLOAD,
+    SOURCE_SEED, SOURCE_UPLOAD, MISSING_THUMBNAIL,
 )
-from events import public_event, upload_state
+from auth import require_admin_ui, public_auth_config
+from events import public_event, upload_state, ad_submission_open
 
 # Explicitly register HLS MIME types
 mimetypes.add_type("application/x-mpegURL", ".m3u8")
@@ -91,6 +101,20 @@ MAX_UPLOADS_PER_EVENT = int(os.getenv("MAX_UPLOADS_PER_EVENT", "300"))
 # therefore approximate: a viewer who closes the tab still counts until their
 # entry expires (PRESENCE_TTL_SECONDS).
 MAX_CONCURRENT_VIEWERS = int(os.getenv("MAX_CONCURRENT_VIEWERS", "2000"))
+
+# Pre-roll ads. The duration is served to the client rather than hardcoded
+# there, so it can be tuned without a frontend rebuild -- but the client also
+# enforces it, since a browser can ignore whatever the server says.
+AD_DURATION_SECONDS = int(os.getenv("AD_DURATION_SECONDS", "10"))
+
+# Mirrors admin.py's alphabet: no 0/O or 1/I, since codes get read off a slide.
+EVENT_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def generate_event_code(length: int = 6) -> str:
+    """Non-sequential, so one code cannot be used to guess another."""
+    return "".join(secrets.choice(EVENT_CODE_ALPHABET) for _ in range(length))
+MAX_AD_MESSAGE_CHARS = int(os.getenv("MAX_AD_MESSAGE_CHARS", "280"))
 
 # Mount static files to serve video uploads (kept for local development)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
@@ -459,6 +483,16 @@ def ingest_upload(code: str, video_file: UploadFile, title: str, description: st
 
     project_id = (project_id or "").strip() or None
 
+    # Required for guest uploads: the project id is what ties a video to its
+    # ad and what the admin console deletes by, so a video without one is
+    # unmanageable afterwards. Organiser seeding stays exempt -- seeded
+    # content is placed deliberately and has no project behind it.
+    if source == SOURCE_UPLOAD and not project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="A project ID is required to publish a video.",
+        )
+
     # A project id that already exists means "replace that submission", not
     # "reject this one" -- teams iterate, and re-submitting is the normal case.
     existing = None
@@ -545,6 +579,36 @@ def load_event_or_404(cursor, code: str) -> dict:
         raise HTTPException(status_code=404, detail="No showroom found for that event code.")
     return event
 
+@app.get("/api/events")
+def list_public_events():
+    """Every showroom, for the in-room switcher.
+
+    NOTE: this makes all event codes public. Codes are generated
+    non-sequentially so one cannot be used to guess another, but listing them
+    removes that protection entirely -- anyone in any room can now see and
+    enter every other room. Only the code and name are exposed; no counts, no
+    windows, no content.
+    """
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM events ORDER BY createdAt DESC, code")
+        rows = [normalize_row(row) for row in cursor.fetchall()]
+
+    # Dates are included so the gate can order events by how near they are to
+    # today. All three are returned rather than one derived value, so the
+    # client can decide what "the event's date" means without another call.
+    return JSONResponse(content=[
+        {
+            "code": r["code"],
+            "name": r["name"],
+            "uploadOpensAt": r.get("uploadOpensAt"),
+            "uploadClosesAt": r.get("uploadClosesAt"),
+            "createdAt": r.get("createdAt"),
+        }
+        for r in rows
+    ])
+
+
 @app.get("/api/events/{code}")
 def read_event(code: str):
     """Resolves an event code. A 404 here is what renders the 'no showroom' screen."""
@@ -595,6 +659,400 @@ def event_presence(code: str, payload: PresencePayload):
         "present": present,
         "capacity": MAX_CONCURRENT_VIEWERS,
     }
+
+
+# --- Admin API --------------------------------------------------------------
+# Every route here is guarded by `require_admin_ui` (see auth.py), declared in
+# the decorator rather than called in the handler so that a new admin route
+# cannot ship unguarded by forgetting a line.
+#
+# The guard is two checks: Google must have signed the caller's identity, and
+# that identity must be on the `admin_users` allowlist. The allowlist is read
+# per request, so revoking access takes effect immediately rather than when
+# the caller's ID token expires.
+
+class AdminEventPayload(BaseModel):
+    name: str
+    code: Optional[str] = None
+    # ISO-8601 UTC. The browser converts from the operator's local time.
+    uploadOpensAt: Optional[str] = None
+    uploadClosesAt: Optional[str] = None
+    adsClosesAt: Optional[str] = None
+    seed: bool = True
+
+
+class AdminUserPayload(BaseModel):
+    email: str
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    """Public Firebase client configuration for the sign-in page.
+
+    Served at runtime rather than compiled into the frontend bundle, so the
+    same image can be pointed at another Firebase project by changing an
+    environment variable. These values identify the project; they do not grant
+    access to anything -- see the note in auth.py.
+    """
+    return JSONResponse(content=public_auth_config())
+
+
+@app.get("/api/admin/me")
+def admin_me(admin: dict = Depends(require_admin_ui)):
+    """Confirms the caller is a signed-in admin, and says who they are.
+
+    The console calls this after sign-in to decide whether to show itself, so
+    an address that is not on the allowlist gets a clear message instead of
+    every panel failing separately.
+    """
+    return JSONResponse(content=admin)
+
+
+@app.get("/api/admin/users", dependencies=[Depends(require_admin_ui)])
+def admin_list_users():
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        users = list_admin_users(cursor)
+    return JSONResponse(content=[
+        {
+            "email": u["email"],
+            "addedAt": u.get("addedAt"),
+            "addedBy": u.get("addedBy"),
+            "active": bool(u.get("active")),
+        }
+        for u in users
+    ])
+
+
+@app.post("/api/admin/users")
+def admin_add_user(payload: AdminUserPayload, admin: dict = Depends(require_admin_ui)):
+    """Grants admin access to a Google address."""
+    email = normalize_email(payload.email)
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email address is required.")
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        outcome = add_admin_user(cursor, email, admin["email"])
+        conn.commit()
+
+    return JSONResponse(content={"email": email, "outcome": outcome}, status_code=201)
+
+
+@app.delete("/api/admin/users/{email}")
+def admin_remove_user(email: str, admin: dict = Depends(require_admin_ui)):
+    """Revokes admin access.
+
+    Two guards against locking everyone out of the console: an admin cannot
+    remove themselves, and the last remaining admin cannot be removed at all.
+    Recovering from an empty allowlist would mean a redeploy or a hand-written
+    SQL statement against Cloud SQL.
+    """
+    address = normalize_email(unquote(email))
+    if address == admin["email"]:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot remove your own admin access.",
+        )
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        if count_active_admins(cursor) <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot remove the last admin.",
+            )
+        removed = remove_admin_user(cursor, address)
+        conn.commit()
+
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"{address} is not an admin.")
+    return {"deleted": removed, "email": address}
+
+
+@app.get("/api/admin/events", dependencies=[Depends(require_admin_ui)])
+def admin_list_events():
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        events = list_events_with_counts(cursor)
+    return JSONResponse(content=[
+        {**public_event(event), "videoCount": event["videoCount"], "adCount": event["adCount"]}
+        for event in events
+    ])
+
+
+@app.post("/api/admin/events", dependencies=[Depends(require_admin_ui)])
+def admin_create_event(payload: AdminEventPayload):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Event name is required.")
+
+    code = (payload.code or "").strip() or generate_event_code()
+    opens, closes = payload.uploadOpensAt, payload.uploadClosesAt
+    if opens and closes and closes <= opens:
+        raise HTTPException(status_code=400, detail="End time must be after start time.")
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        if get_event(cursor, code):
+            raise HTTPException(status_code=409, detail=f"Event '{code}' already exists.")
+        seeded = create_event(cursor, code, name, opens, closes, with_seed=payload.seed)
+        if payload.adsClosesAt:
+            set_event_windows(cursor, code, opens, closes, payload.adsClosesAt)
+        conn.commit()
+        event = get_event(cursor, code)
+
+    return JSONResponse(content={**public_event(event), "seeded": seeded}, status_code=201)
+
+
+@app.patch("/api/admin/events/{code}", dependencies=[Depends(require_admin_ui)])
+def admin_update_event(code: str, payload: AdminEventPayload):
+    """Replaces the event's window. Absent fields clear that bound."""
+    opens, closes = payload.uploadOpensAt, payload.uploadClosesAt
+    if opens and closes and closes <= opens:
+        raise HTTPException(status_code=400, detail="End time must be after start time.")
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        set_event_windows(cursor, code, opens, closes, payload.adsClosesAt)
+        if payload.name.strip():
+            cursor.execute(query_placeholder(
+                "UPDATE events SET name = ? WHERE code = ?"
+            ), (payload.name.strip(), code))
+        conn.commit()
+        event = get_event(cursor, code)
+
+    return JSONResponse(content=public_event(event))
+
+
+@app.post("/api/admin/events/{code}/close", dependencies=[Depends(require_admin_ui)])
+def admin_close_event(code: str):
+    """Shuts an event: no further video uploads and no further ad changes.
+
+    Both deadlines are set to now rather than to a flag, so the existing
+    server-side window logic keeps being the single source of truth.
+    """
+    now = utc_now_iso()
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        event = load_event_or_404(cursor, code)
+        set_event_windows(cursor, code, event.get("uploadOpensAt"), now, now)
+        conn.commit()
+        event = get_event(cursor, code)
+    return JSONResponse(content=public_event(event))
+
+
+@app.get("/api/admin/events/{code}/entries", dependencies=[Depends(require_admin_ui)])
+def admin_list_entries(code: str):
+    """Every video and ad in a showroom, keyed by project for the admin table."""
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        cursor.execute(query_placeholder(
+            "SELECT * FROM videos WHERE eventId = ? ORDER BY createdAt DESC, id"
+        ), (code,))
+        videos = [normalize_row(row) for row in cursor.fetchall()]
+        ads = list_ads(cursor, code)
+
+    return JSONResponse(content={
+        "videos": [
+            {
+                "id": v["id"], "title": v["title"], "projectId": v.get("projectId"),
+                "channelName": v.get("channelName"), "status": v.get("status"),
+                "source": v.get("source"), "createdAt": v.get("createdAt"),
+                "thumbnailUrl": v.get("thumbnailUrl"),
+            }
+            for v in videos
+        ],
+        "ads": [
+            {
+                "id": a["id"], "projectId": a.get("projectId"),
+                "message": a.get("message"), "imageUrl": a.get("imageUrl"),
+                "active": bool(a.get("active")), "updatedAt": a.get("updatedAt"),
+            }
+            for a in ads
+        ],
+    })
+
+
+@app.delete("/api/admin/events/{code}")
+def admin_delete_event(code: str, admin: dict = Depends(require_admin_ui)):
+    """Deletes a showroom along with its videos, ads and presence rows.
+
+    The sandbox is refused: `init_db` recreates and reseeds it on the next
+    cold start, so "deleting" it would appear to work and then silently undo
+    itself. Saying no is clearer than a delete that does not stay done.
+    """
+    if code == SANDBOX_EVENT_CODE:
+        raise HTTPException(
+            status_code=400,
+            detail="The sandbox showroom cannot be deleted; it is recreated on restart.",
+        )
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        removed = delete_event(cursor, code)
+        conn.commit()
+
+    print(f"Admin {admin['email']} deleted event {code} "
+          f"({removed['videos']} videos, {removed['ads']} ads)")
+
+    return {
+        "deleted": code,
+        **removed,
+        # Storage outlives the row on purpose -- see delete_event.
+        "mediaPrefix": f"gs://{os.getenv('PUBLIC_STREAMS_BUCKET', '<public-bucket>')}/{code}/",
+    }
+
+
+@app.delete("/api/admin/events/{code}/videos/{project_id}", dependencies=[Depends(require_admin_ui)])
+def admin_delete_video(code: str, project_id: str):
+    """Deletes a project's video, and its ad along with it.
+
+    The cascade is deliberate: ads are matched to videos by projectId, so an
+    ad left behind after its video has gone can never play again. Leaving it
+    would only produce invisible rows that still count in the admin totals.
+
+    Both statements share one transaction, so a failure cannot leave the video
+    deleted and the ad stranded.
+    """
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        removed = delete_video_by_project(cursor, code, project_id)
+        if not removed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No video for project '{project_id}' in this showroom.",
+            )
+        ads_removed = delete_ad_by_project(cursor, code, project_id)
+        conn.commit()
+
+    return {"deleted": removed, "adsDeleted": ads_removed, "projectId": project_id}
+
+
+@app.delete("/api/admin/events/{code}/ads/{project_id}", dependencies=[Depends(require_admin_ui)])
+def admin_delete_ad(code: str, project_id: str):
+    """Deletes only the ad. The video is untouched and keeps playing."""
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        removed = delete_ad_by_project(cursor, code, project_id)
+        conn.commit()
+    if not removed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No ad for project '{project_id}' in this showroom.",
+        )
+    return {"deleted": removed, "projectId": project_id}
+
+
+@app.post("/api/events/{code}/ads")
+async def create_ad(
+    code: str,
+    projectId: str = Form(...),
+    message: str = Form(...),
+    imageFile: Optional[UploadFile] = File(None),
+):
+    """Submits the pre-roll ad for a project.
+
+    Open like video upload, but the project must already have a video in this
+    showroom. An ad is forced in front of viewers rather than sitting in a
+    grid, so tying submission to an existing participant is the least this
+    endpoint should require.
+
+    Re-submitting the same projectId replaces the ad; omitting the image keeps
+    whichever one is already stored.
+    """
+    project_id = projectId.strip()
+    text = message.strip()
+
+    if not project_id:
+        raise HTTPException(status_code=400, detail="projectId is required.")
+    if not text:
+        raise HTTPException(status_code=400, detail="message is required.")
+    if len(text) > MAX_AD_MESSAGE_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"That message is too long. The limit is {MAX_AD_MESSAGE_CHARS} characters.",
+        )
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        event = load_event_or_404(cursor, code)
+
+        # The deadline gates changes only; ads already uploaded keep playing.
+        if not ad_submission_open(event):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Ad submissions for this showroom are closed. Existing ads "
+                    "keep playing but can no longer be changed."
+                ),
+            )
+
+        if not find_by_project(cursor, code, project_id):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"No video found for project '{project_id}' in this showroom. "
+                    "Upload the video before its ad."
+                ),
+            )
+
+    image_url = store_optional_image(imageFile, "ad image")
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        ad_id = upsert_ad(cursor, code, project_id, text, image_url)
+        conn.commit()
+
+    return {"id": ad_id, "projectId": project_id, "status": "success"}
+
+
+@app.get("/api/events/{code}/ads/{project_id}")
+def get_ad_for_project(code: str, project_id: str):
+    """The ad to play before a project's video, or null.
+
+    Fetched when a video opens rather than bundled into the video list: that
+    list is polled every few seconds by every viewer, and ad copy has no
+    business riding along with it.
+
+    Returns 200 with a null ad rather than 404 when there is nothing to show,
+    so the player has one success path and never treats "no ad" as an error.
+    """
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        # No window check here on purpose: an uploaded ad plays indefinitely.
+        # `active` (set by `admin.py set-ads --disable`) is the only thing that
+        # stops an ad showing.
+        ad = find_ad(cursor, code, project_id)
+
+    if not ad:
+        return JSONResponse(content={"ad": None})
+
+    return JSONResponse(content={
+        "ad": {
+            "id": ad["id"],
+            "projectId": ad["projectId"],
+            "message": ad["message"],
+            "imageUrl": ad.get("imageUrl"),
+            "durationSeconds": AD_DURATION_SECONDS,
+        }
+    })
+
+
+@app.get("/api/events/{code}/ads")
+def get_event_ads(code: str, token: str = Header(None, alias="X-Admin-Token")):
+    """Lists every ad in a showroom, including disabled ones. Admin only."""
+    require_admin(token)
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        load_event_or_404(cursor, code)
+        return JSONResponse(content=list_ads(cursor, code))
 
 
 @app.get("/api/events/{code}/videos")
@@ -701,17 +1159,25 @@ def transcode_complete(
         # The generated thumbnail only replaces the "?" placeholder. An
         # uploader who supplied their own poster frame keeps it -- otherwise
         # the transcoder would silently discard their choice minutes later.
+        #
+        # That placeholder is bound as a parameter rather than written inline
+        # as '?'. `query_placeholder` rewrites every ? to %s for Postgres with
+        # a blind string replace, so an inline '?' became the literal '%s' and
+        # left the statement with one more placeholder than it had parameters.
+        # psycopg2 then raised "IndexError: tuple index out of range", the
+        # callback 500'd, and the video sat in `processing` for ever. SQLite
+        # leaves ? alone, so this only ever failed in the cloud.
         cursor.execute(
             query_placeholder("""
                 UPDATE videos
                 SET videoUrl = ?,
-                    thumbnailUrl = CASE WHEN thumbnailUrl IS NULL OR thumbnailUrl = '?'
+                    thumbnailUrl = CASE WHEN thumbnailUrl IS NULL OR thumbnailUrl = ?
                                         THEN ? ELSE thumbnailUrl END,
                     duration = CASE WHEN ? <> '' THEN ? ELSE duration END,
                     status = ?
                 WHERE id = ?
             """),
-            (payload.videoUrl, payload.thumbnailUrl,
+            (payload.videoUrl, MISSING_THUMBNAIL, payload.thumbnailUrl,
              payload.duration, payload.duration, STATUS_READY, video_id)
         )
         conn.commit()
@@ -767,11 +1233,36 @@ if SERVE_FRONTEND:
         # Containment check: without it, ../ in the URL would escape the build.
         within_build = candidate == FRONTEND_DIR or candidate.startswith(FRONTEND_DIR + os.sep)
         if within_build and os.path.isfile(candidate):
-            return FileResponse(candidate)
+            # Hashed filenames change whenever their content does, so they can
+            # be cached hard. index.html must NOT be -- see below.
+            headers = (
+                {"Cache-Control": "public, max-age=31536000, immutable"}
+                if full_path.startswith("assets/")
+                else None
+            )
+            return FileResponse(candidate, headers=headers)
+
+        # A missing build asset must 404 rather than fall through to the shell.
+        #
+        # Returning index.html here meant a stale, cached index.html asking for
+        # a bundle that a later deploy had replaced got 200 + HTML instead of a
+        # 404. The browser then parsed HTML as JavaScript ("Unexpected token
+        # '<'"), the app never booted, and it looked like the API was broken.
+        # Only extensionless paths are client routes; anything with a file
+        # extension was meant to be a real file.
+        if os.path.splitext(full_path)[1]:
+            raise HTTPException(status_code=404, detail="Not Found")
 
         # Social crawlers do not run JavaScript, so a client-rendered page has
         # nothing for them to read. The tags have to be in the HTML as served.
-        return HTMLResponse(render_index_with_meta(full_path, request))
+        #
+        # no-cache means "revalidate before reuse", not "never store": without
+        # it browsers kept serving an old shell after a deploy, pinning users
+        # to bundles that no longer exist.
+        return HTMLResponse(
+            render_index_with_meta(full_path, request),
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
 
 ANONYMOUS_NAMES = {"", "anonymous vibe", "anonymous"}
 

@@ -1,17 +1,63 @@
+import json
 import os
 import shutil
 import subprocess
 
-# Resolution presets with recommended bitrates for streaming
+# Resolution presets with recommended bitrates for streaming.
+# Ordered smallest first: select_resolutions relies on that to pick a fallback.
 RESOLUTIONS = {
     "480p": {"width": 854, "height": 480, "bitrate": "800k", "audio_bitrate": "128k"},
     "720p": {"width": 1280, "height": 720, "bitrate": "1500k", "audio_bitrate": "128k"},
     "1080p": {"width": 1920, "height": 1080, "bitrate": "3000k", "audio_bitrate": "192k"}
 }
 
+# x264 speed/size trade. The default is "medium"; "fast" encodes roughly twice
+# as quickly for about 5% larger segments, which at these bitrates is not
+# visible. Encoding is what the job spends nearly all its wall time on, so this
+# is the single biggest lever after not upscaling.
+X264_PRESET = os.getenv("X264_PRESET", "fast")
+
+
 def check_ffmpeg() -> bool:
     """Check if ffmpeg is installed and available in the system path."""
     return shutil.which("ffmpeg") is not None
+
+
+def probe_height(input_path: str) -> int:
+    """Height of the source video in pixels, or 0 if it cannot be determined."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=height", "-of", "json", input_path],
+            check=True, capture_output=True, text=True,
+        ).stdout
+        streams = json.loads(out).get("streams") or []
+        return int(streams[0].get("height") or 0)
+    except Exception:
+        # Unknown height means "encode the full ladder", which is the old
+        # behaviour -- wasteful but never worse than failing outright.
+        return 0
+
+
+def select_resolutions(input_path: str) -> list:
+    """Ladder entries worth encoding for this source, smallest first.
+
+    Renditions taller than the source are dropped. Upscaling cannot add detail,
+    so a 1080p rendition of a 720p master is bytes and CPU spent to deliver the
+    same picture -- and it is the most expensive encode in the ladder, since
+    cost scales with pixel count. For a 720p source that alone is ~61% of the
+    total work.
+
+    Falls back to the smallest entry when the source is shorter than every
+    rung, so a tiny input still produces something playable rather than an
+    empty ladder and a failed job.
+    """
+    height = probe_height(input_path)
+    if not height:
+        return list(RESOLUTIONS)
+
+    keep = [key for key, res in RESOLUTIONS.items() if res["height"] <= height]
+    return keep or [next(iter(RESOLUTIONS))]
 
 def transcode_to_mp4(input_path: str, output_dir: str, resolution_key: str) -> str:
     """
@@ -34,6 +80,7 @@ def transcode_to_mp4(input_path: str, output_dir: str, resolution_key: str) -> s
         "-i", input_path,
         "-vf", f"scale=-2:{res['height']}",
         "-c:v", "libx264",
+        "-preset", X264_PRESET,
         "-b:v", res["bitrate"],
         "-c:a", "aac",
         "-b:a", res["audio_bitrate"],
@@ -68,6 +115,7 @@ def transcode_to_hls(input_path: str, output_dir: str, resolution_key: str) -> s
         "-i", input_path,
         "-vf", f"scale=-2:{res['height']}",
         "-c:v", "libx264",
+        "-preset", X264_PRESET,
         "-b:v", res["bitrate"],
         "-c:a", "aac",
         "-b:a", res["audio_bitrate"],
